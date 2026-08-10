@@ -79,7 +79,11 @@ final class WorkspaceManager {
 
     func activeLayoutKind(for workspaceId: WorkspaceDescriptor.ID) -> ActiveLayoutKind {
         guard let descriptor = workspacesById[workspaceId] else { return .niri }
-        return settings.layoutType(for: descriptor.name) == .dwindle ? .dwindle : .niri
+        switch settings.layoutType(for: descriptor.name) {
+        case .dwindle: .dwindle
+        case .stack: .stack
+        default: .niri
+        }
     }
 
     func reconcileSnapshot() -> ReconcileSnapshot {
@@ -2915,6 +2919,11 @@ final class WorkspaceManager {
     var dwindleEngine: DwindleLayoutEngine? {
         get { world.dwindleEngine }
         set { world.installDwindleEngine(newValue) }
+    }
+
+    var stackEngine: StackLayoutEngine? {
+        get { world.stackEngine }
+        set { world.installStackEngine(newValue) }
     }
 
     func layoutTopology(for workspaceId: WorkspaceDescriptor.ID) -> LayoutTopology {

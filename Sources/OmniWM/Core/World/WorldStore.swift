@@ -61,6 +61,7 @@ final class WorldStore {
     private(set) var spaceTopology = SpaceTopology()
     private(set) var niriEngine: NiriLayoutEngine?
     private(set) var dwindleEngine: DwindleLayoutEngine?
+    private(set) var stackEngine: StackLayoutEngine?
     private var activeLayoutResolver: ((WorkspaceDescriptor.ID) -> ActiveLayoutKind)?
     private(set) var epochMarks = InvalidationMarks()
     private var broadcastMarks = InvalidationMarks()
@@ -76,6 +77,7 @@ final class WorldStore {
         let sanctioned = isEngineMutationSanctioned
         niriEngine?.isMutationSanctioned = sanctioned
         dwindleEngine?.isMutationSanctioned = sanctioned
+        stackEngine?.isMutationSanctioned = sanctioned
     }
 
     init(nowProvider: @escaping () -> Date = Date.init) {
@@ -248,6 +250,7 @@ final class WorldStore {
             )
             _ = niriEngine?.rekeyWindow(from: from, to: to, in: workspaceId)
             _ = dwindleEngine?.rekeyWindow(from: from, to: to, in: workspaceId)
+            _ = stackEngine?.rekeyWindow(from: from, to: to, in: workspaceId)
 
         case let .windowRemoved(token, _, _):
             guard phase == .afterPlan else { return }
@@ -832,6 +835,8 @@ extension WorldStore {
         switch activeLayoutResolver?(workspaceId) {
         case .dwindle:
             return LayoutTopology(dwindleFullscreenTokens: dwindleEngine?.fullscreenTokens(in: workspaceId) ?? [])
+        case .stack:
+            return LayoutTopology(dwindleFullscreenTokens: stackEngine?.fullscreenTokens(in: workspaceId) ?? [])
         case .niri,
              nil:
             return LayoutTopology(columns: niriEngine?.topologyColumns(in: workspaceId) ?? [])
@@ -889,6 +894,11 @@ extension WorldStore {
     func installDwindleEngine(_ engine: DwindleLayoutEngine?) {
         engine?.isMutationSanctioned = isEngineMutationSanctioned
         dwindleEngine = engine
+    }
+
+    func installStackEngine(_ engine: StackLayoutEngine?) {
+        engine?.isMutationSanctioned = isEngineMutationSanctioned
+        stackEngine = engine
     }
 
     func applyViewportPlan(_ viewportPlan: ViewportPlan) {

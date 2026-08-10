@@ -117,6 +117,11 @@ final class WMController {
         set { workspaceManager.dwindleEngine = newValue }
     }
 
+    var stackEngine: StackLayoutEngine? {
+        get { workspaceManager.stackEngine }
+        set { workspaceManager.stackEngine = newValue }
+    }
+
     let tabRailManager = TabRailManager()
     @ObservationIgnored
     lazy var nativeFullscreenPlaceholderManager: NativeFullscreenPlaceholderManager = {
@@ -397,6 +402,11 @@ final class WMController {
             splitWidthMultiplier: settings.dwindleSplitWidthMultiplier,
             singleWindowFit: settings.dwindleSingleWindowFit
         )
+
+        if stackEngine == nil {
+            enableStackLayout()
+        }
+        updateStackConfig()
 
         updateWorkspaceConfig()
         updateMonitorOrientations()
@@ -1150,6 +1160,29 @@ final class WMController {
             singleWindowFit: singleWindowFit,
             innerGap: innerGap
         )
+    }
+
+    func enableStackLayout() {
+        let engine = StackLayoutEngine()
+        engine.animationClock = animationClock
+        stackEngine = engine
+        workspaceManager.stackEngine = engine
+    }
+
+    func updateStackConfig() {
+        guard let engine = stackEngine else { return }
+        engine.settings = StackSettings(
+            nmaster: settings.stackNmaster,
+            mfact: CGFloat(settings.stackMfact),
+            resizeStep: CGFloat(settings.stackResizeStep),
+            innerGap: CGFloat(settings.stackInnerGap),
+            stackOrientation: settings.stackOrientation,
+            singleWindowFit: settings.stackSingleWindowFit
+        )
+        for monitor in workspaceManager.monitors {
+            let resolved = settings.resolvedStackSettings(for: monitor)
+            engine.updateMonitorSettings(resolved, for: monitor.id)
+        }
     }
 
     func monitorForInteraction() -> Monitor? {

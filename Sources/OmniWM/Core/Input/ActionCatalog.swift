@@ -924,6 +924,70 @@ enum ActionCatalog {
             )
         ])
 
+        specs.append(contentsOf: [
+            action(
+                id: "incNmaster",
+                command: .incNmaster,
+                category: .layout,
+                binding: .unassigned,
+                visibility: .advanced,
+                keywords: ["stack", "master", "dwm"]
+            ),
+            action(
+                id: "decNmaster",
+                command: .decNmaster,
+                category: .layout,
+                binding: .unassigned,
+                visibility: .advanced,
+                keywords: ["stack", "master", "dwm"]
+            ),
+            action(
+                id: "zoom",
+                command: .zoom,
+                category: .layout,
+                binding: KeyBinding(keyCode: UInt32(kVK_Return), modifiers: UInt32(optionKey | shiftKey)),
+                keywords: ["stack", "master", "swap", "dwm"]
+            ),
+            action(
+                id: "focusStackNext",
+                command: .focusStackNext,
+                category: .focus,
+                binding: .unassigned,
+                keywords: ["stack", "next", "cycle"]
+            ),
+            action(
+                id: "focusStackPrevious",
+                command: .focusStackPrevious,
+                category: .focus,
+                binding: .unassigned,
+                keywords: ["stack", "previous", "cycle"]
+            ),
+            action(
+                id: "moveStackNext",
+                command: .moveStackNext,
+                category: .move,
+                binding: .unassigned,
+                visibility: .advanced,
+                keywords: ["stack", "reorder"]
+            ),
+            action(
+                id: "moveStackPrevious",
+                command: .moveStackPrevious,
+                category: .move,
+                binding: .unassigned,
+                visibility: .advanced,
+                keywords: ["stack", "reorder"]
+            ),
+            action(
+                id: "toggleStackOrientation",
+                command: .toggleStackOrientation,
+                category: .layout,
+                binding: .unassigned,
+                visibility: .advanced,
+                keywords: ["stack", "orientation", "horizontal", "vertical"]
+            )
+        ])
+
         return specs
     }
 
@@ -1044,6 +1108,16 @@ enum ActionCatalog {
              .toggleOverview,
              .toggleSystemStats:
             .shared
+
+        case .incNmaster,
+             .decNmaster,
+             .zoom,
+             .focusStackNext,
+             .focusStackPrevious,
+             .moveStackNext,
+             .moveStackPrevious,
+             .toggleStackOrientation:
+            .stack
         }
     }
 
@@ -1133,6 +1207,14 @@ enum ActionCatalog {
         case .toggleWorkspaceLayout: "Toggle Workspace Layout"
         case .toggleOverview: "Toggle Overview"
         case .toggleSystemStats: "Toggle System Stats"
+        case .incNmaster: "Increase Master Count"
+        case .decNmaster: "Decrease Master Count"
+        case .zoom: "Zoom (Swap Master)"
+        case .focusStackNext: "Focus Next in Stack"
+        case .focusStackPrevious: "Focus Previous in Stack"
+        case .moveStackNext: "Move Forward in Stack"
+        case .moveStackPrevious: "Move Backward in Stack"
+        case .toggleStackOrientation: "Toggle Stack Orientation"
         }
     }
 
@@ -1304,6 +1386,10 @@ enum ActionCatalog {
             .scratchpadToggle
         case .openMenuAnywhere:
             .openMenuAnywhere
+        case .incNmaster, .decNmaster, .zoom, .focusStackNext,
+             .focusStackPrevious, .moveStackNext, .moveStackPrevious,
+             .toggleStackOrientation:
+            nil
         }
     }
 

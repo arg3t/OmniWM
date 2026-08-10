@@ -315,6 +315,7 @@ import QuartzCore
             t1 = traceActive ? CACurrentMediaTime() : 0
             dwindleHandler.tickDwindleAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
             t2 = traceActive ? CACurrentMediaTime() : 0
+            stackLayoutHandler.tickStackAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
             tickClosingAnimations(targetTime: displayLink.targetTimestamp, displayId: displayId)
             t3 = traceActive ? CACurrentMediaTime() : 0
             controller?.surfaceReconciler.reconcileAnimationTick()
@@ -451,6 +452,18 @@ import QuartzCore
         let targetDisplayId = monitor.displayId
 
         guard dwindleHandler.registerDwindleAnimation(workspaceId, monitor: monitor, on: targetDisplayId)
+        else { return }
+
+        if let displayLink = getOrCreateDisplayLink(for: targetDisplayId) {
+            displayLink.add(to: .main, forMode: .common)
+        }
+    }
+
+    func startStackAnimation(for workspaceId: WorkspaceDescriptor.ID, monitor: Monitor) {
+        guard controller?.motionPolicy.animationsEnabled != false else { return }
+        let targetDisplayId = monitor.displayId
+
+        guard stackLayoutHandler.registerStackAnimation(workspaceId, monitor: monitor, on: targetDisplayId)
         else { return }
 
         if let displayLink = getOrCreateDisplayLink(for: targetDisplayId) {
@@ -2081,11 +2094,11 @@ import QuartzCore
             Set<WorkspaceDescriptor.ID>()
         }
         let layoutWorkspaceIds = scanLayoutWorkspaceIds.union(explicitRelayoutWorkspaceIds)
-        let (niriWorkspaces, dwindleWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
+        let (niriWorkspaces, dwindleWorkspaces, stackWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
 
         let workspacePlans = buildWorkspacePlansInBatch {
             var plans: [WorkspaceLayoutPlan] = []
-            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count)
+            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count + stackWorkspaces.count)
             if !niriWorkspaces.isEmpty {
                 plans.append(contentsOf: self.niriHandler.layoutWithNiriEngine(
                     activeWorkspaces: niriWorkspaces,
@@ -2096,6 +2109,11 @@ import QuartzCore
             if !dwindleWorkspaces.isEmpty {
                 plans.append(
                     contentsOf: self.dwindleHandler.layoutWithDwindleEngine(activeWorkspaces: dwindleWorkspaces)
+                )
+            }
+            if !stackWorkspaces.isEmpty {
+                plans.append(
+                    contentsOf: self.stackLayoutHandler.layoutWithStackEngine(activeWorkspaces: stackWorkspaces)
                 )
             }
             return plans
