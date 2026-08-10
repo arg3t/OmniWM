@@ -41,6 +41,8 @@ struct SettingsDetailView: View {
                 controller: controller,
                 navigation: navigation
             )
+        case .monitorSetupProfiles:
+            MonitorSetupProfilesTab(settings: settings, controller: controller)
         case .workspaces:
             WorkspacesSettingsTab(settings: settings, controller: controller)
         case .overview:

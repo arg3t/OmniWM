@@ -95,7 +95,18 @@ struct SettingsExport: Equatable {
     var dwindleMoveToRootStable: Bool
     var monitorDwindleSettings: [MonitorDwindleSettings]
 
+    var stackNmaster: Int
+    var stackMfact: Double
+    var stackResizeStep: Double
+    var stackInnerGap: Double
+    var stackOrientation: String
+    var stackSingleWindowFit: String
+    var stackUseGlobalGaps: Bool
+    var monitorStackSettings: [MonitorStackSettings]
+
     var monitorGapSettings: [MonitorGapSettings]
+
+    var monitorSetupProfiles: [MonitorSetupProfile]
 
     var preventSleepEnabled: Bool
     var updateChecksEnabled: Bool
@@ -215,7 +226,16 @@ extension SettingsExport {
             dwindleUseGlobalGaps: true,
             dwindleMoveToRootStable: true,
             monitorDwindleSettings: [],
+            stackNmaster: 1,
+            stackMfact: 0.55,
+            stackResizeStep: 0.05,
+            stackInnerGap: 8.0,
+            stackOrientation: StackOrientation.vertical.rawValue,
+            stackSingleWindowFit: SingleWindowFit.fullScreen.serialized,
+            stackUseGlobalGaps: true,
+            monitorStackSettings: [],
             monitorGapSettings: [],
+            monitorSetupProfiles: [],
             preventSleepEnabled: false,
             updateChecksEnabled: true,
             ipcEnabled: false,

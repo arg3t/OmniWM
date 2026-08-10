@@ -15,6 +15,7 @@ struct CanonicalTOMLConfig: Codable, Equatable {
     var gaps: Gaps
     var niri: Niri
     var dwindle: Dwindle
+    var stack: Stack
     var borders: Borders
     var overview: Overview
     var workspaceBar: WorkspaceBar
@@ -33,6 +34,8 @@ struct CanonicalTOMLConfig: Codable, Equatable {
     var monitorDwindleOverrides: [MonitorDwindleSettings]
     var monitorGapOverrides: [MonitorGapSettings]
     var monitorRoutingOverrides: [MonitorRoutingSettings]
+    var monitorSetupProfiles: [MonitorSetupProfile]
+    var monitorStackOverrides: [MonitorStackSettings]
 
     struct General: Codable, Equatable {
         var hotkeysEnabled: Bool
@@ -90,6 +93,17 @@ struct CanonicalTOMLConfig: Codable, Equatable {
         var smartSplit: Bool
         var defaultSplitRatio: Double
         var splitWidthMultiplier: Double
+        var singleWindowFit: String
+        var useGlobalGaps: Bool
+        var moveToRootStable: Bool
+    }
+
+    struct Stack: Codable, Equatable {
+        var nmaster: Int
+        var mfact: Double
+        var resizeStep: Double
+        var innerGap: Double
+        var stackOrientation: String
         var singleWindowFit: String
         var useGlobalGaps: Bool
         var moveToRootStable: Bool
@@ -332,6 +346,12 @@ extension CanonicalTOMLConfig {
             default: defaults.dwindle,
             recovering: recovering
         )
+        stack = try container.decode(
+            Stack.self,
+            forKey: .stack,
+            default: defaults.stack,
+            recovering: recovering
+        )
         borders = try container.decode(
             Borders.self,
             forKey: .borders,
@@ -429,6 +449,12 @@ extension CanonicalTOMLConfig {
             default: defaults.monitorDwindleOverrides,
             recovering: recovering
         )
+        monitorStackOverrides = try container.decode(
+            [MonitorStackSettings].self,
+            forKey: .monitorStackOverrides,
+            default: defaults.monitorStackOverrides,
+            recovering: recovering
+        )
         monitorGapOverrides = try container.decode(
             [MonitorGapSettings].self,
             forKey: .monitorGapOverrides,
@@ -439,6 +465,12 @@ extension CanonicalTOMLConfig {
             [MonitorRoutingSettings].self,
             forKey: .monitorRoutingOverrides,
             default: defaults.monitorRoutingOverrides,
+            recovering: recovering
+        )
+        monitorSetupProfiles = try container.decode(
+            [MonitorSetupProfile].self,
+            forKey: .monitorSetupProfiles,
+            default: defaults.monitorSetupProfiles,
             recovering: recovering
         )
     }
@@ -1187,6 +1219,16 @@ extension CanonicalTOMLConfig {
             useGlobalGaps: export.dwindleUseGlobalGaps,
             moveToRootStable: export.dwindleMoveToRootStable
         )
+        stack = Stack(
+            nmaster: export.stackNmaster,
+            mfact: export.stackMfact,
+            resizeStep: export.stackResizeStep,
+            innerGap: export.stackInnerGap,
+            stackOrientation: export.stackOrientation,
+            singleWindowFit: export.stackSingleWindowFit,
+            useGlobalGaps: export.stackUseGlobalGaps,
+            moveToRootStable: true
+        )
         borders = Borders(
             enabled: export.bordersEnabled,
             width: export.borderWidth,
@@ -1278,8 +1320,10 @@ extension CanonicalTOMLConfig {
         monitorOrientationOverrides = export.monitorOrientationSettings
         monitorNiriOverrides = export.monitorNiriSettings
         monitorDwindleOverrides = export.monitorDwindleSettings
+        monitorStackOverrides = export.monitorStackSettings
         monitorGapOverrides = export.monitorGapSettings
         monitorRoutingOverrides = export.monitorRoutingSettings
+        monitorSetupProfiles = export.monitorSetupProfiles
     }
 
     func toSettingsExport() -> SettingsExport {
@@ -1356,7 +1400,16 @@ extension CanonicalTOMLConfig {
             dwindleUseGlobalGaps: dwindle.useGlobalGaps,
             dwindleMoveToRootStable: dwindle.moveToRootStable,
             monitorDwindleSettings: monitorDwindleOverrides,
+            stackNmaster: stack.nmaster,
+            stackMfact: stack.mfact,
+            stackResizeStep: stack.resizeStep,
+            stackInnerGap: stack.innerGap,
+            stackOrientation: stack.stackOrientation,
+            stackSingleWindowFit: stack.singleWindowFit,
+            stackUseGlobalGaps: stack.useGlobalGaps,
+            monitorStackSettings: monitorStackOverrides,
             monitorGapSettings: monitorGapOverrides,
+            monitorSetupProfiles: monitorSetupProfiles,
             preventSleepEnabled: general.preventSleepEnabled,
             updateChecksEnabled: general.updateChecksEnabled,
             ipcEnabled: general.ipcEnabled,

@@ -382,7 +382,47 @@ final class SettingsStore {
         didSet { scheduleSave() }
     }
 
+    var stackNmaster = SettingsStore.defaultExport.stackNmaster {
+        didSet { scheduleSave() }
+    }
+
+    var stackMfact = SettingsStore.defaultExport.stackMfact {
+        didSet { scheduleSave() }
+    }
+
+    var stackResizeStep = SettingsStore.defaultExport.stackResizeStep {
+        didSet { scheduleSave() }
+    }
+
+    var stackInnerGap = SettingsStore.defaultExport.stackInnerGap {
+        didSet { scheduleSave() }
+    }
+
+    var stackOrientation = StackOrientation(
+        rawValue: SettingsStore.defaultExport.stackOrientation
+    ) ?? .vertical {
+        didSet { scheduleSave() }
+    }
+
+    var stackSingleWindowFit = SingleWindowFit(
+        serialized: SettingsStore.defaultExport.stackSingleWindowFit
+    ) {
+        didSet { scheduleSave() }
+    }
+
+    var stackUseGlobalGaps = SettingsStore.defaultExport.stackUseGlobalGaps {
+        didSet { scheduleSave() }
+    }
+
+    var monitorStackSettings = SettingsStore.defaultExport.monitorStackSettings {
+        didSet { scheduleSave() }
+    }
+
     var monitorGapSettings = SettingsStore.defaultExport.monitorGapSettings {
+        didSet { scheduleSave() }
+    }
+
+    var monitorSetupProfiles = SettingsStore.defaultExport.monitorSetupProfiles {
         didSet { scheduleSave() }
     }
 
@@ -762,7 +802,16 @@ final class SettingsStore {
             dwindleUseGlobalGaps: dwindleUseGlobalGaps,
             dwindleMoveToRootStable: dwindleMoveToRootStable,
             monitorDwindleSettings: monitorDwindleSettings,
+            stackNmaster: stackNmaster,
+            stackMfact: stackMfact,
+            stackResizeStep: stackResizeStep,
+            stackInnerGap: stackInnerGap,
+            stackOrientation: stackOrientation.rawValue,
+            stackSingleWindowFit: stackSingleWindowFit.serialized,
+            stackUseGlobalGaps: stackUseGlobalGaps,
+            monitorStackSettings: monitorStackSettings,
             monitorGapSettings: monitorGapSettings.filter(\.hasOverrides),
+            monitorSetupProfiles: monitorSetupProfiles,
             preventSleepEnabled: preventSleepEnabled,
             updateChecksEnabled: updateChecksEnabled,
             ipcEnabled: ipcEnabled,
@@ -910,7 +959,16 @@ final class SettingsStore {
         dwindleUseGlobalGaps = export.dwindleUseGlobalGaps
         dwindleMoveToRootStable = export.dwindleMoveToRootStable
         monitorDwindleSettings = export.monitorDwindleSettings
+        stackNmaster = export.stackNmaster
+        stackMfact = export.stackMfact
+        stackResizeStep = export.stackResizeStep
+        stackInnerGap = export.stackInnerGap
+        stackOrientation = StackOrientation(rawValue: export.stackOrientation) ?? .vertical
+        stackSingleWindowFit = SingleWindowFit(serialized: export.stackSingleWindowFit)
+        stackUseGlobalGaps = export.stackUseGlobalGaps
+        monitorStackSettings = export.monitorStackSettings
         monitorGapSettings = export.monitorGapSettings.filter(\.hasOverrides)
+        monitorSetupProfiles = export.monitorSetupProfiles
 
         preventSleepEnabled = export.preventSleepEnabled
         updateChecksEnabled = export.updateChecksEnabled
@@ -1282,6 +1340,32 @@ final class SettingsStore {
         )
     }
 
+    func stackSettings(for monitor: Monitor) -> MonitorStackSettings? {
+        MonitorSettingsStore.get(for: monitor, in: monitorStackSettings)
+    }
+
+    func updateStackSettings(_ settings: MonitorStackSettings, for monitor: Monitor) {
+        MonitorSettingsStore.update(settings, for: monitor, in: &monitorStackSettings)
+    }
+
+    func removeStackSettings(for monitor: Monitor) {
+        MonitorSettingsStore.remove(for: monitor, from: &monitorStackSettings)
+    }
+
+    func resolvedStackSettings(for monitor: Monitor) -> ResolvedStackSettings {
+        let override = stackSettings(for: monitor)
+        let useGlobalGaps = override?.useGlobalGaps ?? stackUseGlobalGaps
+        return ResolvedStackSettings(
+            nmaster: override?.nmaster ?? stackNmaster,
+            mfact: CGFloat(override?.mfact ?? stackMfact),
+            resizeStep: CGFloat(override?.resizeStep ?? stackResizeStep),
+            innerGap: useGlobalGaps ? resolvedGapSettings(for: monitor).innerGap : CGFloat(override?.innerGap ?? stackInnerGap),
+            stackOrientation: StackOrientation(rawValue: override?.stackOrientation ?? stackOrientation.rawValue) ?? .vertical,
+            singleWindowFit: SingleWindowFit(serialized: override?.singleWindowFit ?? stackSingleWindowFit.serialized),
+            useGlobalGaps: useGlobalGaps
+        )
+    }
+
     func gapSettings(for monitor: Monitor) -> MonitorGapSettings? {
         MonitorSettingsStore.get(for: monitor, in: monitorGapSettings)
     }
@@ -1311,6 +1395,20 @@ final class SettingsStore {
 
     private func resolvedInnerGap(_ override: Double?) -> CGFloat {
         CGFloat(min(64, max(0, override ?? gapSize)))
+    }
+
+    func activeSetupProfile(for monitors: [Monitor]) -> MonitorSetupProfile? {
+        let signature = MonitorSetupProfile.computeSignature(from: monitors)
+        guard !signature.isEmpty else { return nil }
+        return monitorSetupProfiles.first { $0.monitorSignature == signature }
+    }
+
+    func resolvedDefaultLayoutType(for monitors: [Monitor]) -> LayoutType {
+        activeSetupProfile(for: monitors)?.defaultLayoutType ?? defaultLayoutType
+    }
+
+    func resolvedGapSize(for monitors: [Monitor]) -> Double {
+        activeSetupProfile(for: monitors)?.gapSize ?? gapSize
     }
 
     nonisolated static let defaultContainerPrimarySpanPresets: [Double] = BuiltInSettingsDefaults
