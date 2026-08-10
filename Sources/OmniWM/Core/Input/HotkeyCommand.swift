@@ -23,6 +23,7 @@ enum LayoutCompatibility: String {
     case shared = "Shared"
     case niri = "Niri"
     case dwindle = "Dwindle"
+    case stack = "Stack"
 }
 
 enum HotkeyCommand: Codable, Equatable, Hashable {
@@ -117,6 +118,15 @@ enum HotkeyCommand: Codable, Equatable, Hashable {
     case toggleWorkspaceLayout
     case toggleOverview
     case toggleSystemStats
+
+    case incNmaster
+    case decNmaster
+    case zoom
+    case focusStackNext
+    case focusStackPrevious
+    case moveStackNext
+    case moveStackPrevious
+    case toggleStackOrientation
 
     var displayName: String {
         ActionCatalog.title(for: self) ?? String(describing: self)

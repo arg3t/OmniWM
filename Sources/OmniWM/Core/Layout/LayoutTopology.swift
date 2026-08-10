@@ -6,6 +6,7 @@ import Foundation
 enum ActiveLayoutKind: Equatable {
     case niri
     case dwindle
+    case stack
 }
 
 struct LayoutTopology: Equatable {
@@ -19,8 +20,18 @@ struct LayoutTopology: Equatable {
         let tiles: [Tile]
     }
 
+    struct StackTopology: Equatable {
+        let nodes: [Node]
+    }
+
+    struct Node: Equatable {
+        let token: WindowToken
+        let isFullscreen: Bool
+    }
+
     var columns: [Column] = []
     var dwindleFullscreenTokens: Set<WindowToken> = []
+    var stackTopology: StackTopology = StackTopology(nodes: [])
 }
 
 extension LayoutTopology {

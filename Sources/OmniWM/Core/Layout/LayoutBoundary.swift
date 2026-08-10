@@ -64,6 +64,16 @@ struct DwindleWorkspaceSnapshot {
     let isActiveWorkspace: Bool
 }
 
+struct StackWorkspaceSnapshot {
+    let workspaceId: WorkspaceDescriptor.ID
+    let monitor: LayoutMonitorSnapshot
+    let windows: [LayoutWindowSnapshot]
+    let preferredFocusToken: WindowToken?
+    let preferredHideSide: HideSide
+    let settings: ResolvedStackSettings
+    let isActiveWorkspace: Bool
+}
+
 struct LayoutFrameChange {
     let token: WindowToken
     let frame: CGRect
@@ -119,6 +129,7 @@ enum AnimationDirective {
     case none
     case startNiriScroll(workspaceId: WorkspaceDescriptor.ID)
     case startDwindleAnimation(workspaceId: WorkspaceDescriptor.ID, monitorId: Monitor.ID)
+    case startStackAnimation(workspaceId: WorkspaceDescriptor.ID, monitorId: Monitor.ID)
     case activateWindow(token: WindowToken)
 }
 
