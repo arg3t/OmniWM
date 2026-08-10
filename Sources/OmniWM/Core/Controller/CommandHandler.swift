@@ -56,7 +56,12 @@ final class CommandHandler {
         switch (command.layoutCompatibility, layoutType) {
         case (.niri, .dwindle),
              (.dwindle, .niri),
-             (.dwindle, .defaultLayout):
+             (.dwindle, .defaultLayout),
+             (.niri, .stack),
+             (.stack, .niri),
+             (.dwindle, .stack),
+             (.stack, .dwindle),
+             (.stack, .defaultLayout):
             return .ignoredLayoutMismatch
         default:
             break
@@ -241,6 +246,28 @@ final class CommandHandler {
             controller.toggleOverview()
         case .toggleSystemStats:
             controller.toggleSystemStats()
+        case .incNmaster:
+            controller.stackLayoutHandler.adjustNmaster(by: 1)
+            requestStackRelayout()
+        case .decNmaster:
+            controller.stackLayoutHandler.adjustNmaster(by: -1)
+            requestStackRelayout()
+        case .zoom:
+            controller.stackLayoutHandler.zoom()
+            requestStackRelayout()
+        case .focusStackNext:
+            controller.stackLayoutHandler.focusStackNext()
+        case .focusStackPrevious:
+            controller.stackLayoutHandler.focusStackPrevious()
+        case .moveStackNext:
+            controller.stackLayoutHandler.moveStackNext()
+            requestStackRelayout()
+        case .moveStackPrevious:
+            controller.stackLayoutHandler.moveStackPrevious()
+            requestStackRelayout()
+        case .toggleStackOrientation:
+            controller.stackLayoutHandler.toggleStackOrientation()
+            requestStackRelayout()
         }
 
         return .executed
@@ -256,6 +283,8 @@ final class CommandHandler {
         let handler: AnyObject = switch layoutType {
         case .dwindle:
             controller.layoutRefreshController.dwindleHandler
+        case .stack:
+            controller.layoutRefreshController.stackLayoutHandler
         case .niri,
              .defaultLayout:
             controller.layoutRefreshController.niriHandler
@@ -845,6 +874,14 @@ final class CommandHandler {
         return controller.settings.layoutType(for: ws.name)
     }
 
+    private func requestStackRelayout() {
+        guard let controller else { return }
+        guard let wsId = controller.activeWorkspace()?.id else { return }
+        controller.layoutRefreshController.requestLayoutCommandRelayout(
+            affectedWorkspaceIds: [wsId]
+        )
+    }
+
     private func moveToRootInDwindle() {
         guard let controller else { return }
         controller.dwindleLayoutHandler.withDwindleContext { engine, wsId in
@@ -936,7 +973,8 @@ final class CommandHandler {
         let newLayout: LayoutType = switch currentLayout {
         case .niri,
              .defaultLayout: .dwindle
-        case .dwindle: .niri
+        case .dwindle: .stack
+        case .stack: .niri
         }
 
         _ = setWorkspaceLayout(newLayout, forWorkspaceNamed: workspaceName)
