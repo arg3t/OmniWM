@@ -26,10 +26,10 @@ jobs:
           certificate="$RUNNER_TEMP/omniwm-signing.p12"
           printf '%s' "$CERTIFICATE" | base64 -D >"$certificate"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$keychain"
+          certificate_pem="$RUNNER_TEMP/omniwm-signing.cer.pem"
+          openssl pkcs12 -legacy -in "$certificate" -clcerts -nokeys -passin "pass:$CERTIFICATE_PASSWORD" -out "$certificate_pem"
+          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$certificate_pem"
           security list-keychain -d user -s "$keychain"
           security default-keychain -s "$keychain"
           identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(.*\)"/\1/p')"
