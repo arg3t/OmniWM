@@ -11,6 +11,8 @@ permissions:
 jobs:
   release:
     runs-on: macos-26
+    env:
+      GHOSTTYKIT_VERSION: 0.6.4
     steps:
       - uses: actions/checkout@v7
 
@@ -40,7 +42,7 @@ jobs:
           mkdir -p Frameworks
           curl --fail --location --retry 3 \
             --output "$RUNNER_TEMP/GhosttyKit.xcframework.zip" \
-            "https://github.com/BarutSRB/OmniWM/releases/download/v$version/GhosttyKit.xcframework-v$version.zip"
+            "https://github.com/BarutSRB/OmniWM/releases/download/v$GHOSTTYKIT_VERSION/GhosttyKit.xcframework-v$GHOSTTYKIT_VERSION.zip"
           ditto -x -k "$RUNNER_TEMP/GhosttyKit.xcframework.zip" Frameworks
 
       - name: Build and sign app
