@@ -19,7 +19,6 @@ final class ThreadGuardedValue<Value>: Sendable {
         _value = value
     }
 
-    @inlinable
     var value: Value {
         get {
             #if DEBUG
@@ -40,7 +39,6 @@ final class ThreadGuardedValue<Value>: Sendable {
         }
     }
 
-    @inlinable
     var valueIfExists: Value? {
         #if DEBUG
             threadToken.checkEquals(appThreadToken)
@@ -59,7 +57,6 @@ final class ThreadGuardedValue<Value>: Sendable {
         assert(_value == nil, "The Value must be explicitly destroyed on the appropriate thread before deinit")
     }
 
-    @inlinable
     subscript<K: Hashable, V>(key: K) -> V? where Value == [K: V] {
         get {
             #if DEBUG
