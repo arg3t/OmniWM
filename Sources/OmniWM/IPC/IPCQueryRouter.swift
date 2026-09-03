@@ -680,6 +680,8 @@ final class IPCQueryRouter {
             .niri
         case .dwindle:
             .dwindle
+        case .stack:
+            .stack
         }
     }
 

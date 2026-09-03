@@ -63,6 +63,8 @@ struct WorldView {
         switch controller.workspaceManager.activeLayoutKind(for: entry.workspaceId) {
         case .dwindle:
             return controller.dwindleEngine?.isWindowFullscreen(token, in: entry.workspaceId) == true
+        case .stack:
+            return controller.stackEngine?.isWindowFullscreen(token, in: entry.workspaceId) == true
         case .niri:
             return controller.niriEngine?.isWindowFullscreen(token, in: entry.workspaceId) == true
         }

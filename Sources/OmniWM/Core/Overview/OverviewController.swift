@@ -859,6 +859,9 @@ final class OverviewController {
                     engineFrames.merge(projection.frames) { _, new in new }
                 }
                 overviewSnapshot.niriSnapshotsByWorkspace.removeValue(forKey: workspaceId)
+            case .stack:
+                engineFrames.merge(wmController.stackLayoutHandler.frames(in: workspaceId)) { _, new in new }
+                overviewSnapshot.niriSnapshotsByWorkspace.removeValue(forKey: workspaceId)
             }
         }
 
@@ -2403,7 +2406,7 @@ private extension OverviewController {
         guard let wmController else { return false }
         guard let name = wmController.workspaceManager.descriptor(for: workspaceId)?.name else { return false }
         let layoutType = wmController.settings.layoutType(for: name)
-        return layoutType != .dwindle
+        return layoutType == .niri || layoutType == .defaultLayout
     }
 
     func overviewInsertPositionToNiri(_ position: InsertPosition) -> InsertPosition {

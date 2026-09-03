@@ -4,7 +4,6 @@
 import Foundation
 
 @TaskLocal
-@usableFromInline
 var appThreadToken: AppThreadToken?
 
 @usableFromInline

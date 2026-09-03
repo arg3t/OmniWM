@@ -6,6 +6,7 @@ import Foundation
 enum ActiveLayoutKind: Equatable {
     case niri
     case dwindle
+    case stack
 }
 
 struct LayoutTopology: Equatable {

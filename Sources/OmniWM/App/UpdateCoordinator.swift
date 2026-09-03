@@ -153,6 +153,8 @@ final class UpdateCoordinator: AppUpdateCoordinating {
     static let homebrewUpdateCommand = "brew upgrade omniwm"
     static let releasesPageURL = URL(string: "https://github.com/BarutSRB/OmniWM/releases")!
 
+    private static let defaultUserAgent = "OmniWM/" + (Bundle.main.appVersion ?? "unknown")
+
     private let settings: SettingsStore
     private let runtimeState: RuntimeStateStore
     private let releaseService: any GitHubReleaseFetching
@@ -171,7 +173,7 @@ final class UpdateCoordinator: AppUpdateCoordinating {
         settings: SettingsStore,
         runtimeState: RuntimeStateStore = RuntimeStateStore(),
         releaseService: any GitHubReleaseFetching = GitHubReleaseService(
-            userAgent: "OmniWM/\(Bundle.main.appVersion ?? "unknown")"
+            userAgent: UpdateCoordinator.defaultUserAgent
         ),
         currentVersionProvider: @escaping () -> ReleaseVersion? = { Bundle.main.releaseVersion },
         currentVersionStringProvider: @escaping () -> String = { Bundle.main.appVersion ?? "Unknown" },

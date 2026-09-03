@@ -8,6 +8,7 @@ enum LayoutType: String, Codable, CaseIterable, Identifiable {
     case defaultLayout = "default"
     case niri
     case dwindle
+    case stack
 
     var id: String {
         rawValue
@@ -18,6 +19,7 @@ enum LayoutType: String, Codable, CaseIterable, Identifiable {
         case .defaultLayout: "Default"
         case .niri: "Niri (Scrolling)"
         case .dwindle: "Dwindle (BSP)"
+        case .stack: "Stack (dwm)"
         }
     }
 }

@@ -66,7 +66,7 @@ public enum IPCCommandArgumentKind: String, Codable, CaseIterable, Equatable, Se
              .scratchpadIndex:
             "<number>"
         case .layout:
-            "<default|niri|dwindle>"
+            "<default|niri|dwindle|stack>"
         case .resizeAxis:
             "<horizontal|vertical>"
         case .resizeOperation:
@@ -923,7 +923,7 @@ public enum IPCAutomationManifest {
         command(
             ["toggle-workspace-layout"],
             name: .toggleWorkspaceLayout,
-            summary: "Toggle the current workspace between Niri and Dwindle."
+            summary: "Cycle the current workspace through Niri, Dwindle, and Stack."
         ),
         command(
             ["set-workspace-layout"],

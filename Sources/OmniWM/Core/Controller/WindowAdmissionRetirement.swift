@@ -41,7 +41,7 @@ extension AXEventHandler {
         var oldFrames: [WindowToken: CGRect] = [:]
         var removedNodeId: NodeId?
         var removedNiriColumn = false
-        if layoutType != .dwindle, let engine = controller.niriEngine {
+        if (layoutType == .niri || layoutType == .defaultLayout), let engine = controller.niriEngine {
             oldFrames = engine.captureWindowFrames(in: workspaceId)
             let node = engine.findNode(for: token, in: workspaceId)
             removedNodeId = node?.id

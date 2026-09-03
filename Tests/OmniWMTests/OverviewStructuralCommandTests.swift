@@ -1227,6 +1227,8 @@ final class OverviewStructuralCommandTests: XCTestCase {
                     to: workspaceId,
                     activeWindowFrame: nil
                 )
+            case .stack:
+                controller.stackEngine?.syncWindows([token], in: workspaceId)
             }
         }
         return try XCTUnwrap(controller.workspaceManager.handle(for: token))

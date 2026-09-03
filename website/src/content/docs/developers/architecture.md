@@ -71,7 +71,8 @@ Sources/
 │   │   │   ├── LayoutTopology.swift Read-only layout structure projection
 │   │   │   ├── SideHiding.swift     Off-screen placement geometry
 │   │   │   ├── Niri/                Orientation-aware scrolling-container engine (33 files)
-│   │   │   └── Dwindle/             Binary-partition layout engine (5 files)
+│   │   │   ├── Dwindle/             Binary-partition layout engine (5 files)
+│   │   │   └── StackLayoutEngine.swift  dwm master-and-stack engine
 │   │   ├── Animation/               Springs, cubic easing, deceleration, viewport motion, policy (8)
 │   │   ├── Config/                  SettingsStore, TOML codec, runtime state, per-monitor settings (29)
 │   │   ├── Rules/                   Window rule engine and structural lookup tables (3)
@@ -374,6 +375,7 @@ Some apps (Ghostty, browsers) destroy and recreate windows during internal opera
     private(set) var spaceTopology = SpaceTopology()
     private(set) var niriEngine: NiriLayoutEngine?      // layout engines are
     private(set) var dwindleEngine: DwindleLayoutEngine? //   PRIVATE to the world
+    private(set) var stackEngine: StackLayoutEngine?
     // ... InvalidationMarks bookkeeping
 }
 ```
@@ -392,9 +394,9 @@ Some apps (Ghostty, browsers) destroy and recreate windows during internal opera
 
 **macOS application visibility.** App hiding is PID-scoped world state, owned by `WorldStore.hiddenAppPIDs` and changed only by `.hiddenApplicationsChanged` commits. `appVisibilityGenerationByPID` advances on every visibility transition or explicit invalidation so delayed reveal intents can reject stale work. This state is orthogonal to per-window `LayoutReason` (`standard` / `nativeFullscreen`) and `HiddenState` (workspace parking, layout-transient hiding, or scratchpad): hiding an app masks its windows from layout projection without destroying their durable layout identity or fullscreen state.
 
-**macOS application visibility diagnostics.** An active runtime capture records the ordered NSWorkspace notification, intake dispatch, authoritative generation change, AX hard-fence transition, visibility-refresh lifecycle, and explicit reveal-intent result in the bounded `AppVisibilityTrace`. The capture's start/end reports independently compare WorldStore visibility, AX suppression, macOS process visibility, pending reveal intent, per-window fullscreen/parking state, and the Niri/Dwindle projection masks. These are read-only observations rather than another visibility authority; detailed records are capture-gated, and no layout, animation, AX-write, or SkyLight hot loop performs visibility trace work.
+**macOS application visibility diagnostics.** An active runtime capture records the ordered NSWorkspace notification, intake dispatch, authoritative generation change, AX hard-fence transition, visibility-refresh lifecycle, and explicit reveal-intent result in the bounded `AppVisibilityTrace`. The capture's start/end reports independently compare WorldStore visibility, AX suppression, macOS process visibility, pending reveal intent, per-window fullscreen/parking state, and the Niri/Dwindle/Stack projection masks. These are read-only observations rather than another visibility authority; detailed records are capture-gated, and no layout, animation, AX-write, or SkyLight hot loop performs visibility trace work.
 
-**Engine mutation sanction.** The two layout engines are private to the world. They may only be mutated when `isEngineMutationSanctioned` is true — i.e. inside `commit`. Callers not already inside a commit enter one through the `WorkspaceManager` scope wrappers: `withEngineMutationScope { … }` for ad-hoc engine mutations, and `withBatchedLayoutBuild { … }` for plan-building (Stage 3), which calls into the engines (`syncWindows`/`removeWindows`/`restoreInitialPlacements`) inside a single `layout_build` commit. `commit` sets each engine's `isMutationSanctioned` flag and the engines assert on any out-of-scope mutation.
+**Engine mutation sanction.** The three layout engines are private to the world. They may only be mutated when `isEngineMutationSanctioned` is true — i.e. inside `commit`. Callers not already inside a commit enter one through the `WorkspaceManager` scope wrappers: `withEngineMutationScope { … }` for ad-hoc engine mutations, and `withBatchedLayoutBuild { … }` for plan-building (Stage 3), which calls into the engines (`syncWindows`/`removeWindows`/`restoreInitialPlacements`) inside a single `layout_build` commit. `commit` sets each engine's `isMutationSanctioned` flag and the engines assert on any out-of-scope mutation.
 
 **Staleness machinery (`InvalidationMarks`).** Plan-building itself is synchronous inside the `layout_build` commit. After that commit returns, a newer relevant commit or explicit invalidation can still land before effect application, post-layout work, or animation acceptance. `WorldStore` tracks per-domain seq watermarks (`workspace` / `layout` / `focus` / `fullscreen`) via `noteInvalidation(...)`. The effector stamps each plan with a `plannedSeq` and calls `isSeqCurrent(plannedSeq, for:domains:)` before applying; a plan older than a relevant mutation is dropped rather than applied stale.
 
@@ -420,7 +422,7 @@ A scoped scan may update missing-window counters only for explicit app roots who
 
 Scoped reconciliation reduces application-root enumeration and full AX-fact work relative to a global scan; it does not make refresh proportional only to changed windows. Topology refresh still checks native-Space membership for each tracked managed window, and selected AX roots still enumerate their window lists. Its latency and allocation benefit remains unproven until measured.
 
-**Plan-building runs inside a commit.** `buildRelayoutEffectPlan` calls `NiriLayoutHandler.layoutWithNiriEngine` (and the Dwindle equivalent), which run `syncWindows`/`removeWindows`/`restoreInitialPlacements` on the engines inside `workspaceManager.withBatchedLayoutBuild` — a single synchronous `layout_build` commit that also stamps each plan's `plannedSeq`. The layout engines return raw `[WindowToken: CGRect]` frame maps; the handlers wrap those into a `WorkspaceLayoutPlan` → `WorkspaceLayoutDiff` → `EffectPlan` (`Core/Layout/LayoutBoundary.swift`).
+**Plan-building runs inside a commit.** `buildRelayoutEffectPlan` calls the Niri, Dwindle, and Stack handlers. They run engine mutations inside `workspaceManager.withBatchedLayoutBuild` — a single synchronous `layout_build` commit that also stamps each plan's `plannedSeq`. The layout engines return raw `[WindowToken: CGRect]` frame maps; the handlers wrap those into a `WorkspaceLayoutPlan` → `WorkspaceLayoutDiff` → `EffectPlan` (`Core/Layout/LayoutBoundary.swift`).
 
 **Monitor geometry has three explicit frames.** `LayoutMonitorSnapshot` carries a normal `workingFrame`, a `borderSafeFillFrame`, and a `fullscreenLayoutFrame`. When focus borders are enabled, `WMController` rounds the configured border width upward to a physical pixel and floors the runtime inner gap plus each final normalized outer strut to that clearance. Raw global and per-monitor settings are not rewritten; Dwindle's monitor-local `useGlobalGaps = false` path passes through the same runtime resolver. Normal tiled and valid custom-fit windows use `workingFrame`; Niri maximized windows and Niri/Dwindle single-window fill use `borderSafeFillFrame`; true layout fullscreen remains borderless and uses `fullscreenLayoutFrame` unchanged.
 
@@ -449,14 +451,14 @@ When OmniWM activates an app or focuses a window, macOS emits an AX focus-change
 
 ### 3.8 Layout Engines as Pure State Machines
 
-Both engines follow the same contract:
+All three engines follow the same contract:
 
-1. They own their own **tree state** — per-workspace `NiriRoot` trees for Niri, per-workspace `DwindleNode` trees for Dwindle.
+1. They own their per-workspace state — `NiriRoot` trees for Niri, `DwindleNode` trees for Dwindle, and ordered token lists for Stack.
 2. They are **owned privately by `WorldStore`** and may only be mutated under commit/build-scope sanction.
 3. Given a workspace's snapshot, monitor geometry, gaps, and (for Niri) a `ViewportState`, they compute a `[WindowToken: CGRect]` frame map.
 4. They **never touch windows** — no AX calls, no frame writes, no `@Observable`, no actor isolation. They are plain `final class` types that run on the main actor only because their owner does.
 
-The Controller-layer handlers (`NiriLayoutHandler`/`DwindleLayoutHandler`) translate the engines' frame maps into `EffectPlan`s; the engines themselves never build an `EffectPlan`. Note that `ViewportState` is stored in `WorldStore.viewports`, not inside the Niri engine — the engine receives it as a call parameter.
+The Controller-layer handlers (`NiriLayoutHandler`/`DwindleLayoutHandler`/`StackLayoutHandler`) translate the engines' frame maps into `EffectPlan`s; the engines themselves never build an `EffectPlan`. Note that `ViewportState` is stored in `WorldStore.viewports`, not inside the Niri engine — the engine receives it as a call parameter.
 
 ### 3.9 The Ungated Animation Tier
 
@@ -499,13 +501,13 @@ There is one deliberate exception to "all mutation goes through commit": **per-f
 | `workspaceNavigationHandler` | Workspace switching, directional whole-workspace monitor moves, explicit-handle window workspace/monitor transfers, and Niri whole-column workspace transfers |
 | `windowActionHandler` | Close, fullscreen, float toggle |
 | `serviceLifecycleManager` | Observer setup, permission polling, service start/stop |
-| `layoutRefreshController` | Refresh scheduling, the display-link loop, frame application (owns `niriLayoutHandler`/`dwindleLayoutHandler`) |
+| `layoutRefreshController` | Refresh scheduling, the display-link loop, frame application (owns `niriLayoutHandler`/`dwindleLayoutHandler`/`stackLayoutHandler`) |
 | `focusNotificationDispatcher` | Publishes focus-change events to IPC subscribers |
 
 **Core managers it owns directly:** `settings: SettingsStore`, `workspaceManager: WorkspaceManager`, `axManager: AXManager`, `windowRuleEngine: WindowRuleEngine`, `hotkeys: HotkeyCenter`, `motionPolicy: MotionPolicy`, `animationClock: AnimationClock`, plus surface managers (`workspaceBarManager`, `nativeFullscreenPlaceholderManager`) and the quake, clipboard, command-palette, and system-stats controllers. `OverviewController` is **not** one of them: `windowActionHandler` lazily constructs and owns it, and `WMController` reaches Overview through that handler.
 
 :::note
-The layout engines are **not** owned by `WMController`. `WMController.niriEngine`/`dwindleEngine` are pass-through accessors that ultimately reach `WorldStore`'s private engines.
+The layout engines are **not** owned by `WMController`. `WMController.niriEngine`/`dwindleEngine`/`stackEngine` are pass-through accessors that ultimately reach `WorldStore`'s private engines.
 :::
 
 ### 4.2 World State: WorldStore, WorkspaceManager, WindowState
@@ -629,7 +631,13 @@ Each leaf owns one stable tile containing an ordered member list and one active 
 
 `DwindleLayoutEngine.calculateLayout(for:screen:) -> [WindowToken: CGRect]`. **Smart split** (`planSplit`) chooses orientation from the available rectangle's slope vs. aspect; **preselection** lets the user direct where the next window inserts. The engine also supports resize/balance/whole-tile swap/toggle-orientation/toggle-fullscreen, grouped-member reorder, and geometric-neighbor navigation. Like Niri it is a plain `final class`, AX-free, mutation-gated by `WorldStore`.
 
-### 4.5 Focus Lifecycle
+### 4.5 Stack Layout Engine (dwm)
+
+**File:** `Sources/OmniWM/Core/Layout/StackLayoutEngine.swift`
+
+Stack uses an ordered client list. The first client fills the left master area. The other clients share equal-height rows in the right stack area. New clients become master. Focus up/down traverses the visible list with wrap. Move up/down swaps the selected client with the visible neighbor and also wraps. The engine stores the order and selection only. `StackLayoutHandler` builds frames and handles focus, input, and layout refresh.
+
+### 4.6 Focus Lifecycle
 
 Focus management is split across several objects (there is no single coordinator class — `KeyboardFocusLifecycleCoordinator.swift` now holds only value types: `KeyboardFocusTarget`, `ManagedFocusOrigin`, `ManagedFocusRequest`).
 

@@ -791,6 +791,8 @@ extension WorkspaceMoveFocusBehaviorTests {
                     to: workspaceId,
                     activeWindowFrame: nil
                 )
+            case .stack:
+                controller.stackEngine?.syncWindows([token], in: workspaceId)
             }
         }
         return try XCTUnwrap(controller.workspaceManager.handle(for: token))
@@ -834,6 +836,17 @@ extension WorkspaceMoveFocusBehaviorTests {
             let engine = try XCTUnwrap(controller.dwindleEngine)
             controller.workspaceManager.withEngineMutationScope(in: workspaceId) {
                 _ = engine.activateWindow(handle.id, in: workspaceId)
+            }
+            _ = controller.workspaceManager.commitWorkspaceSelection(
+                nodeId: nil,
+                focusedToken: handle.id,
+                in: workspaceId,
+                onMonitor: monitor.id
+            )
+        case .stack:
+            let engine = try XCTUnwrap(controller.stackEngine)
+            controller.workspaceManager.withEngineMutationScope(in: workspaceId) {
+                _ = engine.activate(handle.id, in: workspaceId)
             }
             _ = controller.workspaceManager.commitWorkspaceSelection(
                 nodeId: nil,

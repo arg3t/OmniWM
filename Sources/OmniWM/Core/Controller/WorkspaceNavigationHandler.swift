@@ -176,6 +176,9 @@ final class WorkspaceNavigationHandler {
                 layoutRefresh: false,
                 focusAfterLayout: false
             )
+        case .stack:
+            guard controller.stackEngine?.contains(token, in: workspaceId) == true else { return }
+            commitWorkspaceSelection(nodeId: nil, focusedToken: token, in: workspaceId)
         }
     }
 
@@ -778,8 +781,15 @@ final class WorkspaceNavigationHandler {
         while candidateNumber > 0 {
             let candidateName = String(candidateNumber)
             if wm.workspaceId(named: candidateName) == nil {
-                let candidateLayoutKind: ActiveLayoutKind = controller.settings.layoutType(for: candidateName)
-                    == .dwindle ? .dwindle : .niri
+                let candidateLayoutKind: ActiveLayoutKind = switch controller.settings.layoutType(for: candidateName) {
+                case .dwindle:
+                    .dwindle
+                case .stack:
+                    .stack
+                case .niri,
+                     .defaultLayout:
+                    .niri
+                }
                 guard requiredLayoutKind == nil || candidateLayoutKind == requiredLayoutKind else { return nil }
                 guard let workspace = wm.createDynamicWorkspace(named: candidateName, on: monitorId) else {
                     return nil
@@ -810,6 +820,8 @@ final class WorkspaceNavigationHandler {
             .map { controller.settings.layoutType(for: $0.name) } ?? .defaultLayout
         let sourceIsDwindle = sourceLayout == .dwindle
         let targetIsDwindle = targetLayout == .dwindle
+        let sourceIsStack = sourceLayout == .stack
+        let targetIsStack = targetLayout == .stack
         var newSourceFocusToken: WindowToken?
         var movedWithNiri = false
 
@@ -823,6 +835,8 @@ final class WorkspaceNavigationHandler {
 
         if !sourceIsDwindle,
            !targetIsDwindle,
+           !sourceIsStack,
+           !targetIsStack,
            let sourceWsId,
            let engine = controller.niriEngine,
            let windowNode = engine.findNode(for: token, in: sourceWsId)
@@ -852,6 +866,7 @@ final class WorkspaceNavigationHandler {
 
         if !movedWithNiri,
            !sourceIsDwindle,
+           !sourceIsStack,
            let sourceWsId,
            let engine = controller.niriEngine
         {
@@ -865,7 +880,7 @@ final class WorkspaceNavigationHandler {
                     )
                 }
 
-                if targetIsDwindle, engine.findNode(for: token, in: sourceWsId) != nil {
+                if (targetIsDwindle || targetIsStack), engine.findNode(for: token, in: sourceWsId) != nil {
                     controller.workspaceManager.captureDetachedNiriPlacement(for: token, in: sourceWsId)
                     engine.removeWindow(token: token, in: sourceWsId)
                 }
@@ -890,6 +905,14 @@ final class WorkspaceNavigationHandler {
                 dwindleEngine.removeWindow(token: token, from: sourceWsId)
                 return dwindleEngine.selectedNode(in: sourceWsId)?.windowToken
             }
+        } else if sourceIsStack,
+                  let sourceWsId,
+                  let stackEngine = controller.stackEngine
+        {
+            newSourceFocusToken = controller.workspaceManager.withEngineMutationScope(in: sourceWsId) {
+                stackEngine.removeWindow(token, from: sourceWsId)
+                return stackEngine.orderedTokens(in: sourceWsId).first
+            }
         }
 
         let succeeded: Bool
@@ -897,7 +920,7 @@ final class WorkspaceNavigationHandler {
             succeeded = true
         } else if sourceWsId == nil {
             succeeded = true
-        } else if !sourceIsDwindle && !targetIsDwindle {
+        } else if !sourceIsDwindle && !targetIsDwindle && !sourceIsStack && !targetIsStack {
             succeeded = false
         } else {
             succeeded = true
@@ -1165,6 +1188,8 @@ final class WorkspaceNavigationHandler {
             return controller.niriEngine?.findNode(for: handle, in: workspaceId) != nil
         case .dwindle:
             return controller.dwindleEngine?.findNode(for: handle.id, in: workspaceId) != nil
+        case .stack:
+            return controller.stackEngine?.contains(handle.id, in: workspaceId) == true
         }
     }
 

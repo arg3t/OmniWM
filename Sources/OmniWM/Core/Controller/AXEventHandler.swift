@@ -1328,7 +1328,7 @@ final class AXEventHandler {
         }
         let layoutType = controller.workspaceManager.descriptor(for: entry.workspaceId)
             .map { controller.settings.layoutType(for: $0.name) } ?? .defaultLayout
-        guard layoutType != .dwindle,
+        guard layoutType == .niri || layoutType == .defaultLayout,
               let monitor = controller.workspaceManager.monitor(for: entry.workspaceId),
               controller.workspaceManager.activeWorkspace(on: monitor.id)?.id == entry.workspaceId
         else {
@@ -1437,7 +1437,8 @@ final class AXEventHandler {
         case .niri,
              .defaultLayout:
             break
-        case .dwindle:
+        case .dwindle,
+             .stack:
             return false
         }
 
@@ -2369,6 +2370,11 @@ final class AXEventHandler {
                 preferredMouseFrame = engine.contentFrame(for: entry.token, in: wsId)
                     ?? engine.findNode(for: entry.token, in: wsId)?.cachedFrame
             }
+        case .stack:
+            _ = controller.workspaceManager.withEngineMutationScope(in: wsId) {
+                controller.stackEngine?.activate(entry.token, in: wsId)
+            }
+            preferredMouseFrame = controller.stackLayoutHandler.frame(for: entry.token, in: wsId)
         case .niri:
             if let engine = controller.niriEngine,
                let node = engine.findNode(for: entry.token, in: wsId),

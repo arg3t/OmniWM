@@ -498,7 +498,7 @@ enum StructuralMutationOutcome: Equatable {
             else { continue }
 
             let layoutType = controller.settings.layoutType(for: workspace.name)
-            if layoutType == .dwindle { continue }
+            guard layoutType == .niri || layoutType == .defaultLayout else { continue }
             let isActiveWorkspace = controller.workspaceManager.activeWorkspaceOrFirst(on: monitor.id)?.id == wsId
 
             guard let snapshot = makeWorkspaceSnapshot(
@@ -1997,7 +1997,8 @@ enum StructuralMutationOutcome: Equatable {
         guard let controller else { return }
         var changed: Set<WorkspaceDescriptor.ID> = []
         for descriptor in controller.workspaceManager.workspaces {
-            guard controller.settings.layoutType(for: descriptor.name) != .dwindle else { continue }
+            let layoutType = controller.settings.layoutType(for: descriptor.name)
+            guard layoutType == .niri || layoutType == .defaultLayout else { continue }
             withNiriWorkspaceContext(for: descriptor.id) {
                 engine, wsId, motion, state, _, workingFrame, gaps, orientation in
                 guard engine.balanceSizes(

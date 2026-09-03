@@ -4,6 +4,9 @@
 import wchar_h
 import xlocale
 
+@_silgen_name("wcwidth_l")
+private func localeCellWidth(_ scalar: Int32, _ locale: locale_t) -> Int32
+
 private struct TerminalWidthLocale: ~Copyable, @unchecked Sendable {
     let value: locale_t
 
@@ -53,7 +56,7 @@ enum TerminalCellWidth {
                 emojiCount += 1
             }
 
-            let scalarWidth = wcwidth_l(Int32(scalar.value), locale.value)
+            let scalarWidth = localeCellWidth(Int32(scalar.value), locale.value)
             if scalarWidth >= 0 {
                 width += Int(scalarWidth)
             } else if properties.generalCategory != .control,

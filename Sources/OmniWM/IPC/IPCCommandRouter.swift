@@ -433,6 +433,8 @@ final class IPCCommandRouter {
             .niri
         case .dwindle:
             .dwindle
+        case .stack:
+            .stack
         }
     }
 

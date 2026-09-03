@@ -41,7 +41,7 @@ Global switches: hotkeys, Hyper key, default layout, sleep, updates, IPC, animat
 | `hotkeysEnabled` | boolean | `true` | Master switch for all global hotkeys. |
 | `systemHyperTrigger` | string | `"None"` | Physical trigger for Hyper: `None`, a key name (`CapsLock`, `F13`–`F20`, `Control`/`RightControl`, `Option`/`RightOption`, `Shift`/`RightShift`, `Command`/`RightCommand`), or `MouseButton3`/`MouseButton4`/`MouseButton5`. |
 | `hyperKeyModifiers` | string | `"Control+Option+Shift+Command"` | Modifier set Hyper expands to: `+`-joined names, at least two of Control/Option/Shift/Command. |
-| `defaultLayoutType` | string | `"niri"` | Layout used by workspaces whose own `layoutType` is `default`: `niri` or `dwindle`. |
+| `defaultLayoutType` | string | `"niri"` | Layout used by workspaces whose own `layoutType` is `default`: `niri`, `dwindle`, or `stack`. |
 | `preventSleepEnabled` | boolean | `false` | Prevents idle display sleep while your user session is active. |
 | `updateChecksEnabled` | boolean | `true` | Automatic update checks. |
 | `ipcEnabled` | boolean | `false` | Enables the IPC server used by `omniwmctl`. |
@@ -297,7 +297,9 @@ Array of workspace definitions.
 | `name` | string | Workspace name; numeric names define the ordering and number-key targets. |
 | `displayName` *(optional)* | string | Label shown in the bar instead of `name` (emoji welcome). |
 | `monitorAssignment` | table | `type` = `main`, `secondary`, or `specificDisplay` (the latter carries an `output` value identifying the display). |
-| `layoutType` | string | `default` (follow `general.defaultLayoutType`), `niri`, or `dwindle`. |
+| `layoutType` | string | `default` (follow `general.defaultLayoutType`), `niri`, `dwindle`, or `stack`. The `stack` layout uses one left master window and an equal-height right stack. |
+
+The stack layout uses the existing focus up/down and move up/down commands. Focus moves through the workspace order. Move swaps the focused window with the previous or next tiled window, and wraps at the order boundary.
 
 Default: nine workspaces named `1`–`9`, all Niri — `1`–`5` and `8`–`9` on the main monitor, `6` (shown as ❤️) and `7` (shown as 🚀) on the secondary, matching the default `Option + 1`–`9` bindings.
 

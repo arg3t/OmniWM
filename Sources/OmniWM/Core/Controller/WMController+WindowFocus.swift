@@ -646,6 +646,8 @@ extension WMController {
                     return engine.contentFrame(for: token, in: workspaceId)
                         ?? engine.findNode(for: token, in: workspaceId)?.cachedFrame
                 }
+            case .stack:
+                return stackLayoutHandler.frame(for: token, in: workspaceId)
             }
         }
         if let floatingState = workspaceManager.floatingState(for: token) {

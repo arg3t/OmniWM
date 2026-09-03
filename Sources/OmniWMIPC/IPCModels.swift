@@ -127,6 +127,7 @@ public enum IPCWorkspaceLayout: String, Codable, Equatable, Sendable {
     case defaultLayout = "default"
     case niri
     case dwindle
+    case stack
 }
 
 public enum IPCHiddenReason: String, Codable, Equatable, Sendable {

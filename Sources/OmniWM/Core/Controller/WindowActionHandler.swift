@@ -695,6 +695,13 @@ final class WindowActionHandler {
                 targetWorkspaceId: targetWorkspaceId,
                 focusedToken: anchorToken
             )
+        case .stack:
+            return summonWindowRightInStack(
+                token: token,
+                sourceWorkspaceId: targetEntry.workspaceId,
+                targetWorkspaceId: targetWorkspaceId,
+                focusedToken: anchorToken
+            )
         case .niri,
              .defaultLayout:
             return summonWindowRightInNiri(
@@ -720,6 +727,9 @@ final class WindowActionHandler {
         if targetLayoutKind == .niri, controller.niriEngine == nil {
             return false
         }
+        if targetLayoutKind == .stack, controller.stackEngine == nil {
+            return false
+        }
 
         let currentWsId = controller.activeWorkspace()?.id
 
@@ -743,6 +753,15 @@ final class WindowActionHandler {
                     )
                 )
             }
+        case .stack:
+            _ = controller.workspaceManager.applySessionPatch(
+                .init(
+                    workspaceId: workspaceId,
+                    viewportState: nil,
+                    rememberedFocusToken: token,
+                    plannedSeq: controller.workspaceManager.worldSeq
+                )
+            )
         case .niri:
             guard let engine = controller.niriEngine else { return false }
             var targetState = controller.workspaceManager.niriViewportState(for: workspaceId)
@@ -853,8 +872,7 @@ final class WindowActionHandler {
         ).didMutate else {
             return false
         }
-
-        if sourceLayoutType == .dwindle {
+        if sourceLayoutType == .dwindle || sourceLayoutType == .stack {
             commitSummonedWindowFocus(
                 token: token,
                 workspaceId: targetWorkspaceId,
@@ -919,6 +937,34 @@ final class WindowActionHandler {
             return false
         }
 
+        commitSummonedWindowFocus(token: token, workspaceId: targetWorkspaceId)
+        return true
+    }
+
+    @discardableResult
+    private func summonWindowRightInStack(
+        token: WindowToken,
+        sourceWorkspaceId: WorkspaceDescriptor.ID,
+        targetWorkspaceId: WorkspaceDescriptor.ID,
+        focusedToken: WindowToken
+    ) -> Bool {
+        guard let controller,
+              controller.stackEngine?.contains(focusedToken, in: targetWorkspaceId) == true
+        else {
+            return false
+        }
+        if sourceWorkspaceId == targetWorkspaceId {
+            guard controller.stackLayoutHandler.insertWindow(token, after: focusedToken, in: targetWorkspaceId) else {
+                return false
+            }
+        } else {
+            guard controller.workspaceNavigationHandler.moveWindow(
+                handle: WindowHandle(id: token),
+                toWorkspaceId: targetWorkspaceId
+            ).didMutate else {
+                return false
+            }
+        }
         commitSummonedWindowFocus(token: token, workspaceId: targetWorkspaceId)
         return true
     }

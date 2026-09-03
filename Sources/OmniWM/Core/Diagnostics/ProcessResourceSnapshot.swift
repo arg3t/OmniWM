@@ -212,7 +212,7 @@ struct ProcessResourceDelta: Equatable, Sendable {
             qosSeconds.background,
             qosSeconds.maintenance,
             qosSeconds.utility,
-            qosSeconds.default,
+            qosSeconds.`default`,
             qosSeconds.userInitiated,
             qosSeconds.userInteractive,
             qosSeconds.legacy
@@ -223,7 +223,7 @@ struct ProcessResourceDelta: Equatable, Sendable {
             qosSeconds.background / elapsedSeconds,
             qosSeconds.maintenance / elapsedSeconds,
             qosSeconds.utility / elapsedSeconds,
-            qosSeconds.default / elapsedSeconds,
+            qosSeconds.`default` / elapsedSeconds,
             qosSeconds.userInitiated / elapsedSeconds,
             qosSeconds.userInteractive / elapsedSeconds,
             qosSeconds.legacy / elapsedSeconds

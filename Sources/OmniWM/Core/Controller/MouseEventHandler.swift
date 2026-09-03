@@ -144,6 +144,7 @@ final class MouseEventHandler {
     private enum FocusFollowsMouseTarget {
         case niri(workspaceId: WorkspaceDescriptor.ID, window: NiriWindow)
         case dwindle(workspaceId: WorkspaceDescriptor.ID, token: WindowToken)
+        case stack(workspaceId: WorkspaceDescriptor.ID, token: WindowToken)
         case floating(token: WindowToken)
     }
 
@@ -1155,7 +1156,7 @@ final class MouseEventHandler {
         if layoutType == .dwindle {
             return handleDwindleMouseDown(at: location, modifiers: modifiers, button: button, wsId: wsId)
         }
-
+        guard layoutType == .niri || layoutType == .defaultLayout else { return false }
         guard let engine = controller.niriEngine else { return false }
 
         if button == .left,
@@ -1580,6 +1581,8 @@ final class MouseEventHandler {
                 in: workspaceId,
                 at: controller.animationClock.now()
             )
+        } else if layoutType == .stack {
+            token = controller.stackLayoutHandler.hitTestFocusableWindow(point: location, in: workspaceId)
         } else {
             token = controller.niriEngine?.hitTestFocusableWindow(
                 point: location,
@@ -2209,6 +2212,12 @@ final class MouseEventHandler {
                         return nil
                     }
                     return .dwindle(workspaceId: entry.workspaceId, token: entry.token)
+
+                case .stack:
+                    guard controller.stackEngine?.contains(entry.token, in: entry.workspaceId) == true else {
+                        return nil
+                    }
+                    return .stack(workspaceId: entry.workspaceId, token: entry.token)
                 }
             }
         }
@@ -2240,6 +2249,15 @@ final class MouseEventHandler {
                 return nil
             }
             return .dwindle(workspaceId: workspaceId, token: token)
+
+        case .stack:
+            guard let token = controller.stackLayoutHandler.hitTestFocusableWindow(
+                point: location,
+                in: workspaceId
+            ) else {
+                return nil
+            }
+            return .stack(workspaceId: workspaceId, token: token)
         }
     }
 
@@ -2247,9 +2265,9 @@ final class MouseEventHandler {
         switch target {
         case let .niri(_, window):
             window.token
-        case let .dwindle(_, token):
-            token
-        case let .floating(token):
+        case let .dwindle(_, token),
+             let .stack(_, token),
+             let .floating(token):
             token
         }
     }
@@ -2300,11 +2318,21 @@ final class MouseEventHandler {
                 origin: .focusFollowsMouse,
                 layoutRefresh: false
             )
+        case let .stack(workspaceId, token):
+            _ = controller.workspaceManager.applySessionPatch(
+                .init(
+                    workspaceId: workspaceId,
+                    viewportState: nil,
+                    rememberedFocusToken: token,
+                    plannedSeq: controller.workspaceManager.worldSeq
+                )
+            )
+            controller.focusWindow(token, origin: .focusFollowsMouse)
         case let .floating(token):
             controller.focusWindow(token, origin: .focusFollowsMouse)
         }
-    }
 
+    }
     private func handleGestureEvent(_ snapshot: GestureEventSnapshot) {
         let location = snapshot.location
         let phase = NSEvent.Phase(rawValue: snapshot.phaseRawValue)
@@ -2413,7 +2441,8 @@ final class MouseEventHandler {
         case .niri,
              .defaultLayout:
             controller.niriEngine != nil
-        case .dwindle:
+        case .dwindle,
+             .stack:
             false
         }
         guard TrackpadGestureIntent.hasCandidateMode(
@@ -2900,7 +2929,8 @@ final class MouseEventHandler {
         case .niri,
              .defaultLayout:
             return (engine, workspace.id, monitor)
-        case .dwindle:
+        case .dwindle,
+             .stack:
             return nil
         }
     }

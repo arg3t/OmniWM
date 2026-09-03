@@ -187,6 +187,11 @@ final class WMController {
         }
     }
 
+    var stackEngine: StackLayoutEngine? {
+        get { workspaceManager.stackEngine }
+        set { workspaceManager.stackEngine = newValue }
+    }
+
     let tabRailManager = TabRailManager()
     @ObservationIgnored
     lazy var nativeFullscreenPlaceholderManager: NativeFullscreenPlaceholderManager = {
@@ -281,6 +286,10 @@ final class WMController {
 
     var dwindleLayoutHandler: DwindleLayoutHandler {
         layoutRefreshController.dwindleHandler
+    }
+
+    var stackLayoutHandler: StackLayoutHandler {
+        layoutRefreshController.stackHandler
     }
 
     @ObservationIgnored
@@ -476,6 +485,10 @@ final class WMController {
 
         if dwindleEngine == nil {
             enableDwindleLayout()
+        }
+
+        if stackEngine == nil {
+            stackEngine = StackLayoutEngine()
         }
         updateDwindleConfig(
             smartSplit: settings.dwindleSmartSplit,
@@ -3725,6 +3738,14 @@ final class WMController {
                 commitWorkspaceFocusCandidate(preferredToken, in: workspaceId)
                 return
             }
+        case .stack:
+            if let preferredToken,
+               !isManagedWindowSuppressedByMacOSHide(preferredToken),
+               stackEngine?.contains(preferredToken, in: workspaceId) == true
+            {
+                commitWorkspaceFocusCandidate(preferredToken, in: workspaceId)
+                return
+            }
         }
 
         _ = workspaceManager.resolveAndSetWorkspaceFocusToken(in: workspaceId, onMonitor: monitorId)
@@ -3767,6 +3788,16 @@ final class WMController {
                     focusAfterLayout: focusDwindleCandidate
                 )
                 return focusDwindleCandidate && activation != .missing
+            }
+        case .stack:
+            if stackEngine?.contains(token, in: workspaceId) == true {
+                _ = workspaceManager.commitWorkspaceSelection(
+                    nodeId: nil,
+                    focusedToken: token,
+                    in: workspaceId,
+                    onMonitor: monitorId
+                )
+                return false
             }
         }
 

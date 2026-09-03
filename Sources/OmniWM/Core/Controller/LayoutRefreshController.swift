@@ -196,6 +196,7 @@ import QuartzCore
 
     private(set) lazy var niriHandler = NiriLayoutHandler(controller: controller)
     private(set) lazy var dwindleHandler = DwindleLayoutHandler(controller: controller)
+    private(set) lazy var stackHandler = StackLayoutHandler(controller: controller)
     private lazy var diffExecutor = LayoutDiffExecutor(refreshController: self)
 
     var isDiscoveryInProgress: Bool {
@@ -1069,11 +1070,11 @@ import QuartzCore
             effects.visibility = .init()
             return EffectPlan(effects: effects)
         }
-        let (niriWorkspaces, dwindleWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
+        let (niriWorkspaces, dwindleWorkspaces, stackWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
 
         let workspacePlans = buildWorkspacePlansInBatch {
             var plans: [WorkspaceLayoutPlan] = []
-            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count)
+            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count + stackWorkspaces.count)
             if !niriWorkspaces.isEmpty {
                 plans.append(contentsOf: self.niriHandler.layoutWithNiriEngine(
                     activeWorkspaces: niriWorkspaces,
@@ -1084,6 +1085,9 @@ import QuartzCore
                 plans.append(
                     contentsOf: self.dwindleHandler.layoutWithDwindleEngine(activeWorkspaces: dwindleWorkspaces)
                 )
+            }
+            if !stackWorkspaces.isEmpty {
+                plans.append(contentsOf: self.stackHandler.layoutWithStackEngine(activeWorkspaces: stackWorkspaces))
             }
             return plans
         }
@@ -1109,6 +1113,7 @@ import QuartzCore
         guard let controller else { return .init() }
 
         var dwindleWorkspaces: Set<WorkspaceDescriptor.ID> = []
+        var stackWorkspaces: Set<WorkspaceDescriptor.ID> = []
         var focusedWorkspacesToRecover: Set<WorkspaceDescriptor.ID> = []
         var workspacesAllowingPreferredRecovery: Set<WorkspaceDescriptor.ID> = []
         let niriRemovalSeeds = makeNiriRemovalSeeds(from: payloads)
@@ -1117,6 +1122,8 @@ import QuartzCore
             switch payload.layoutType {
             case .dwindle:
                 dwindleWorkspaces.insert(payload.workspaceId)
+            case .stack:
+                stackWorkspaces.insert(payload.workspaceId)
             case .niri,
                  .defaultLayout:
                 break
@@ -1132,7 +1139,7 @@ import QuartzCore
 
         let workspacePlans = buildWorkspacePlansInBatch {
             var plans: [WorkspaceLayoutPlan] = []
-            plans.reserveCapacity(dwindleWorkspaces.count + niriRemovalSeeds.count)
+            plans.reserveCapacity(dwindleWorkspaces.count + stackWorkspaces.count + niriRemovalSeeds.count)
             if !niriRemovalSeeds.isEmpty {
                 plans.append(contentsOf: self.niriHandler.layoutWithNiriEngine(
                     activeWorkspaces: Set(niriRemovalSeeds.keys),
@@ -1144,6 +1151,9 @@ import QuartzCore
                 plans.append(
                     contentsOf: self.dwindleHandler.layoutWithDwindleEngine(activeWorkspaces: dwindleWorkspaces)
                 )
+            }
+            if !stackWorkspaces.isEmpty {
+                plans.append(contentsOf: self.stackHandler.layoutWithStackEngine(activeWorkspaces: stackWorkspaces))
             }
             return plans
         }
@@ -1769,11 +1779,11 @@ import QuartzCore
             Set<WorkspaceDescriptor.ID>()
         }
         let layoutWorkspaceIds = scanLayoutWorkspaceIds.union(explicitRelayoutWorkspaceIds)
-        let (niriWorkspaces, dwindleWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
+        let (niriWorkspaces, dwindleWorkspaces, stackWorkspaces) = partitionWorkspacesByLayoutType(layoutWorkspaceIds)
 
         let workspacePlans = buildWorkspacePlansInBatch {
             var plans: [WorkspaceLayoutPlan] = []
-            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count)
+            plans.reserveCapacity(niriWorkspaces.count + dwindleWorkspaces.count + stackWorkspaces.count)
             if !niriWorkspaces.isEmpty {
                 plans.append(contentsOf: self.niriHandler.layoutWithNiriEngine(
                     activeWorkspaces: niriWorkspaces,
@@ -1785,6 +1795,9 @@ import QuartzCore
                 plans.append(
                     contentsOf: self.dwindleHandler.layoutWithDwindleEngine(activeWorkspaces: dwindleWorkspaces)
                 )
+            }
+            if !stackWorkspaces.isEmpty {
+                plans.append(contentsOf: self.stackHandler.layoutWithStackEngine(activeWorkspaces: stackWorkspaces))
             }
             return plans
         }
@@ -1935,27 +1948,29 @@ import QuartzCore
 
     private func partitionWorkspacesByLayoutType(
         _ workspaces: Set<WorkspaceDescriptor.ID>
-    ) -> (niri: Set<WorkspaceDescriptor.ID>, dwindle: Set<WorkspaceDescriptor.ID>) {
-        guard let controller else { return ([], []) }
+    ) -> (niri: Set<WorkspaceDescriptor.ID>, dwindle: Set<WorkspaceDescriptor.ID>, stack: Set<WorkspaceDescriptor.ID>) {
+        guard let controller else { return ([], [], []) }
 
         var niriWorkspaces: Set<WorkspaceDescriptor.ID> = []
         var dwindleWorkspaces: Set<WorkspaceDescriptor.ID> = []
+        var stackWorkspaces: Set<WorkspaceDescriptor.ID> = []
 
         for wsId in workspaces {
             guard let ws = controller.workspaceManager.descriptor(for: wsId) else {
                 continue
             }
-            let layoutType = controller.settings.layoutType(for: ws.name)
-            switch layoutType {
+            switch controller.settings.layoutType(for: ws.name) {
             case .dwindle:
                 dwindleWorkspaces.insert(wsId)
+            case .stack:
+                stackWorkspaces.insert(wsId)
             case .niri,
                  .defaultLayout:
                 niriWorkspaces.insert(wsId)
             }
         }
 
-        return (niriWorkspaces, dwindleWorkspaces)
+        return (niriWorkspaces, dwindleWorkspaces, stackWorkspaces)
     }
 
     private func liveLayoutWorkspaceIds(

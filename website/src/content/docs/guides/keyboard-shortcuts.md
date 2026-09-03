@@ -129,7 +129,7 @@ The window-to-monitor actions send the focused window directly to the current wo
 
 `Consume or Expel Window Left / Right` exist as automation-only actions. They are reachable from `omniwmctl` but never appear in Settings > Hotkeys, because they intentionally cannot be bound to a shortcut.
 
-The daily `Focus` and `Move` shortcuts adapt to the active layout and Niri orientation. In horizontal Niri orientation, `Move Left / Right` consumes or expels across columns while `Move Up / Down` reorders within a column. Vertical orientation rotates those roles: `Move Up / Down` consumes or expels across rows while `Move Left / Right` reorders within a row.
+The daily `Focus` and `Move` shortcuts adapt to the active layout and Niri orientation. In horizontal Niri orientation, `Move Left / Right` consumes or expels across columns while `Move Up / Down` reorders within a column. Vertical orientation rotates those roles: `Move Up / Down` consumes or expels across rows while `Move Left / Right` reorders within a row. In Stack, `Focus Up / Down` traverses the workspace client order and `Move Up / Down` swaps the focused client in that order. Both commands wrap.
 
 ## Dwindle Groups
 
@@ -147,6 +147,15 @@ Dwindle groups use the existing Focus and Move bindings, so there are no separat
 Moving a tab directly from one existing group into another is intentionally a two-step operation: extract it first, then move the resulting singleton toward the destination group. A singleton at a genuine workspace edge can still use the normal cross-monitor Move behavior; a rejected group mutation does not fall through to tile swapping or monitor movement.
 
 The unassigned advanced actions are available in Settings > Hotkeys. `Focus Down or Top / Up or Bottom` always wraps within the active Niri column or Dwindle group. `Reorder Window Up / Down` changes the active member's position by one without wrapping. `Move Container` is the whole-structure escape hatch and never transfers to another monitor at a workspace edge. Dwindle join/extract and Move Container operations are intentionally unavailable while Overview is open; leave Overview before changing a Dwindle tree.
+
+## Stack Layout
+
+Stack uses the dwm master-and-stack arrangement. The newest tiled window becomes the left master. The other tiled windows share equal-height rows on the right.
+
+| Goal | Default Shortcut | Behavior |
+|------|------------------|----------|
+| Focus previous / next client | `Option + Up / Down Arrow` | Traverses every visible tiled client and wraps. |
+| Move client up / down | `Option + Shift + Up / Down Arrow` | Swaps the focused client with the previous or next client and wraps. |
 
 ## Quake Terminal (Inside Terminal)
 

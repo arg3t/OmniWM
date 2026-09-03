@@ -55,7 +55,7 @@ extension LayoutType {
     }
 
     static var reportChoices: [LayoutType] {
-        [.niri, .dwindle]
+        [.niri, .dwindle, .stack]
     }
 }
 
