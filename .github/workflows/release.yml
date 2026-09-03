@@ -27,12 +27,9 @@ jobs:
           printf '%s' "$CERTIFICATE" | base64 -D >"$certificate"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          certificate_pem="$RUNNER_TEMP/omniwm-signing.cer.pem"
-          openssl pkcs12 -legacy -in "$certificate" -clcerts -nokeys -passin "pass:$CERTIFICATE_PASSWORD" -out "$certificate_pem"
-          security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$certificate_pem"
           security list-keychain -d user -s "$keychain"
           security default-keychain -s "$keychain"
-          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(.*\)"/\1/p')"
+          identity="$(security find-certificate -c 'OmniWM Local CI' -Z "$keychain" | sed -n 's/^SHA-1 hash: //p')"
           test -n "$identity"
           echo "OMNIWM_SIGNING_IDENTITY=$identity" >>"$GITHUB_ENV"
 
@@ -46,7 +43,13 @@ jobs:
           ditto -x -k "$RUNNER_TEMP/GhosttyKit.xcframework.zip" Frameworks
 
       - name: Build and sign app
-        run: ./Scripts/package-app.sh release dev
+        run: |
+          ./Scripts/package-app.sh release false
+          app="dist/OmniWM.app"
+          codesign --force --options runtime --sign "$OMNIWM_SIGNING_IDENTITY" "$app/Contents/MacOS/omniwmctl"
+          codesign --force --options runtime --entitlements OmniWM.entitlements --sign "$OMNIWM_SIGNING_IDENTITY" "$app/Contents/MacOS/OmniWM"
+          codesign --force --options runtime --entitlements OmniWM.entitlements --sign "$OMNIWM_SIGNING_IDENTITY" "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Publish release
         env:
