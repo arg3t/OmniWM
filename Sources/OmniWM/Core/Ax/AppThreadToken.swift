@@ -3,6 +3,7 @@
 
 import Foundation
 
+@usableFromInline
 @TaskLocal
 var appThreadToken: AppThreadToken?
 
