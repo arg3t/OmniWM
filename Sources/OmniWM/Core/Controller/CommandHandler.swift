@@ -112,6 +112,8 @@ final class CommandHandler {
         let handler: AnyObject = switch layoutType {
         case .dwindle:
             controller.layoutRefreshController.dwindleHandler
+        case .stack:
+            controller.layoutRefreshController.stackHandler
         case .niri,
              .defaultLayout:
             controller.layoutRefreshController.niriHandler
@@ -123,6 +125,8 @@ final class CommandHandler {
         switch currentLayoutType() {
         case .dwindle:
             controller?.dwindleLayoutHandler.moveWindow(direction: direction) ?? .blocked
+        case .stack:
+            controller?.stackLayoutHandler.moveStack(direction: direction) == true ? .movedWithinWorkspace : .blocked
         case .niri,
              .defaultLayout:
             moveWindowInNiri(direction: direction)
@@ -142,6 +146,13 @@ final class CommandHandler {
                 return
             }
             _ = controller.dwindleLayoutHandler.wrapGroupFocus(direction: direction)
+        case .stack:
+            if controller.stackLayoutHandler.focusStack(direction: direction) {
+                return
+            }
+            if controller.settings.focus.crossesMonitorAtEdge {
+                _ = controller.workspaceNavigationHandler.focusMonitor(direction: direction)
+            }
         case .niri,
              .defaultLayout:
             if controller.niriLayoutHandler.focusNeighbor(direction: direction) != true,
@@ -156,6 +167,8 @@ final class CommandHandler {
         switch currentLayoutType() {
         case .dwindle:
             controller?.dwindleLayoutHandler.moveGroupMember(direction: direction)
+        case .stack:
+            _ = controller?.stackLayoutHandler.moveStack(direction: direction)
         case .niri,
              .defaultLayout:
             controller?.niriLayoutHandler.moveWindowWithinContainer(direction: direction)
@@ -166,6 +179,8 @@ final class CommandHandler {
         switch currentLayoutType() {
         case .dwindle:
             _ = controller?.dwindleLayoutHandler.swapWindow(direction: direction)
+        case .stack:
+            break
         case .niri,
              .defaultLayout:
             controller?.niriLayoutHandler.moveColumn(direction: direction)
@@ -176,6 +191,8 @@ final class CommandHandler {
         switch currentLayoutType() {
         case .dwindle:
             _ = controller?.dwindleLayoutHandler.wrapGroupFocus(direction: direction)
+        case .stack:
+            _ = controller?.stackLayoutHandler.focusStack(direction: direction)
         case .niri,
              .defaultLayout:
             if direction == .down {
@@ -190,6 +207,8 @@ final class CommandHandler {
         switch currentLayoutType() {
         case .dwindle:
             controller?.dwindleLayoutHandler.toggleFullscreen()
+        case .stack:
+            controller?.stackLayoutHandler.toggleFullscreen()
         case .niri,
              .defaultLayout:
             controller?.niriLayoutHandler.toggleFullscreen()
@@ -292,7 +311,7 @@ final class CommandHandler {
         }
     }
 
-    private func currentLayoutType() -> LayoutType {
+    func currentLayoutType() -> LayoutType {
         guard let controller else { return .niri }
         guard let ws = controller.activeWorkspace() else { return .niri }
         return controller.settings.workspaces.layoutType(for: ws.name)
@@ -308,7 +327,8 @@ final class CommandHandler {
         let newLayout: LayoutType = switch currentLayout {
         case .niri,
              .defaultLayout: .dwindle
-        case .dwindle: .niri
+        case .dwindle: .stack
+        case .stack: .niri
         }
 
         _ = setWorkspaceLayout(newLayout, forWorkspaceNamed: workspaceName)

@@ -122,7 +122,8 @@ extension MouseEventHandler {
         case .niri,
              .defaultLayout:
             controller.niriEngine != nil
-        case .dwindle:
+        case .dwindle,
+             .stack:
             false
         }
         guard TrackpadGestureIntent.hasCandidateMode(

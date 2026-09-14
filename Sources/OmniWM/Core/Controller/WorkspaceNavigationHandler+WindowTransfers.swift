@@ -216,6 +216,8 @@ extension WorkspaceNavigationHandler {
         let targetWsId = transfer.targetWorkspaceId
         let sourceIsDwindle = transfer.sourceIsDwindle
         let targetIsDwindle = transfer.targetIsDwindle
+        let sourceIsStack = transfer.sourceIsStack
+        let targetIsStack = transfer.targetIsStack
         if !sourceIsDwindle,
            !targetIsDwindle,
            !sourceIsStack,

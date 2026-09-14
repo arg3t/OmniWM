@@ -26,6 +26,7 @@ extension MouseEventHandler {
         case niri(workspaceId: WorkspaceDescriptor.ID, window: NiriWindow)
         case dwindle(workspaceId: WorkspaceDescriptor.ID, token: WindowToken)
         case stack(workspaceId: WorkspaceDescriptor.ID, token: WindowToken)
+        case floating(token: WindowToken)
     }
 
     func handleMouseMovedFromTap(

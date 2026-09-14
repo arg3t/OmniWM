@@ -18,7 +18,7 @@ final class StackLayoutHandler {
         var plans: [WorkspaceLayoutPlan] = []
         for workspaceId in activeWorkspaces.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard let workspace = controller.workspaceManager.descriptor(for: workspaceId),
-                  controller.settings.layoutType(for: workspace.name) == .stack,
+                  controller.settings.workspaces.layoutType(for: workspace.name) == .stack,
                   let monitor = controller.workspaceManager.monitor(for: workspaceId),
                   let input = controller.layoutRefreshController.buildRefreshInput(
                       workspaceId: workspaceId,

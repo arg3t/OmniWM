@@ -67,7 +67,7 @@ final class StackLayoutEngineTests: XCTestCase {
 
     func testDefaultFocusAndMoveBindingsRouteToStackOrder() throws {
         let controller = makeController()
-        controller.settings.workspaceConfigurations.append(WorkspaceConfiguration(name: "80", layoutType: .stack))
+        controller.settings.workspaces.configurations.append(WorkspaceConfiguration(name: "80", layoutType: .stack))
         controller.workspaceManager.applySettings()
         let workspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(named: "80"))
         let monitor = try XCTUnwrap(controller.workspaceManager.monitors.first)
