@@ -5,7 +5,7 @@ import AppKit
 import Foundation
 
 extension NiriLayoutEngine {
-    private func updateActiveTileIdx(for nodeId: NodeId, in col: NiriContainer) {
+    func updateActiveTileIdx(for nodeId: NodeId, in col: NiriContainer) {
         let windowNodes = col.windowNodes
         let idx = windowNodes.firstIndex(where: { $0.id == nodeId }) ?? 0
         col.setActiveTileIdx(idx)
@@ -64,54 +64,32 @@ extension NiriLayoutEngine {
         }
 
         let targetColumn = projectedColumns[targetIndex]
-        let targetRows = targetColumn.windows
-        guard !targetRows.isEmpty else {
-            return nil
-        }
-
-        let activeWindow = projectedActiveWindow(in: targetColumn)
-        let activeRowIndex = activeWindow.flatMap { activeWindow in
-            targetRows.firstIndex(where: { $0 === activeWindow })
-        } ?? 0
-        let clampedRowIndex = min(targetRowIndex ?? activeRowIndex, targetRows.count - 1)
-        return targetRows[clampedRowIndex]
+        return projectedRow(in: targetColumn, targetRowIndex: targetRowIndex)
     }
 
     func moveSelectionHorizontal(
         direction: Direction,
         currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
+        context: NiriInteractionContext,
         state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation,
         targetRowIndex: Int? = nil
     ) -> NiriNode? {
         moveSelectionCrossContainer(
             direction: direction,
             currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
+            context: context,
             state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
             orientation: .horizontal,
-            viewportOrientation: orientation,
             targetSiblingIndex: targetRowIndex
         )
     }
 
-    private func moveSelectionCrossContainer(
+    func moveSelectionCrossContainer(
         direction: Direction,
         currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
+        context: NiriInteractionContext,
         state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
         orientation: Monitor.Orientation,
-        viewportOrientation: Monitor.Orientation,
         targetSiblingIndex: Int? = nil
     ) -> NiriNode? {
         guard let step = direction.primaryStep(for: orientation) else { return nil }
@@ -119,7 +97,7 @@ extension NiriLayoutEngine {
         guard let newSelection = moveSelectionByColumns(
             steps: step,
             currentSelection: currentSelection,
-            in: workspaceId,
+            in: context.workspaceId,
             targetRowIndex: targetSiblingIndex
         ) else {
             return nil
@@ -129,12 +107,8 @@ extension NiriLayoutEngine {
 
         ensureSelectionVisible(
             node: newSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: viewportOrientation
+            context: context,
+            state: &state
         )
 
         return newSelection
@@ -153,7 +127,7 @@ extension NiriLayoutEngine {
         )
     }
 
-    private func moveSelectionWithinContainer(
+    func moveSelectionWithinContainer(
         direction: Direction,
         currentSelection: NiriNode,
         orientation: Monitor.Orientation,
@@ -224,27 +198,19 @@ extension NiriLayoutEngine {
 
     func ensureSelectionVisible(
         node: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
+        context: NiriInteractionContext,
         state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation,
         animationConfig: SpringConfig? = nil,
         fromContainerIndex: Int? = nil,
         previousActiveContainerPosition: CGFloat? = nil,
         previousProjectedAnchor: NiriProjectedViewportAnchor? = nil
     ) {
         assertSanctionedMutation()
-        if !projectionExclusions(in: workspaceId).isEmpty {
+        if !projectionExclusions(in: context.workspaceId).isEmpty {
             ensureProjectedSelectionVisible(
                 node: node,
-                in: workspaceId,
-                motion: motion,
+                context: context,
                 state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation,
                 animationConfig: animationConfig,
                 fromContainerIndex: fromContainerIndex,
                 previousProjectedAnchor: previousProjectedAnchor
@@ -252,66 +218,44 @@ extension NiriLayoutEngine {
             return
         }
         resolvePrimaryContainerSpans(
-            in: workspaceId,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
+            in: context.workspaceId,
+            workingFrame: context.workingFrame,
+            gaps: context.gaps,
+            orientation: context.orientation
         )
-        let containers = columns(in: workspaceId)
+        let containers = columns(in: context.workspaceId)
         guard !containers.isEmpty else { return }
 
         guard let container = column(of: node),
-              let targetIdx = columnIndex(of: container, in: workspaceId)
+              let targetIdx = columnIndex(of: container, in: context.workspaceId)
         else {
             return
         }
 
         let prevIdx = fromContainerIndex ?? state.activeColumnIndex
 
-        let viewportSpan: CGFloat = switch orientation {
-        case .horizontal: workingFrame.width
-        case .vertical: workingFrame.height
-        }
-
-        let scale = displayScale(in: workspaceId)
-        let viewFrame = monitorForWorkspace(workspaceId)?.frame
-        let oldActivePos = previousActiveContainerPosition
-            ?? state.containerPosition(
-                at: state.activeColumnIndex,
-                containers: containers,
-                gap: gaps,
-                sizeKeyPath: orientation.renderedSpanKeyPath
-            )
-        let newActivePos = state.containerPosition(
-            at: targetIdx,
-            containers: containers,
-            gap: gaps,
-            sizeKeyPath: orientation.renderedSpanKeyPath
+        let scale = displayScale(in: context.workspaceId)
+        let viewFrame = monitorForWorkspace(context.workspaceId)?.frame
+        state.retargetColumn(
+            to: targetIdx,
+            columns: containers,
+            gap: context.gaps,
+            orientation: context.orientation,
+            previousPosition: previousActiveContainerPosition
         )
-        let offsetDelta = oldActivePos - newActivePos
-        state.rebaseOffset(by: offsetDelta)
 
-        state.activeColumnIndex = targetIdx
-        state.activatePrevColumnOnRemoval = nil
-        state.viewOffsetToRestore = nil
-
-        let settings = effectiveSettings(in: workspaceId)
+        let settings = effectiveSettings(in: context.workspaceId)
         state.ensureContainerVisible(
             containerIndex: targetIdx,
             containers: containers,
-            gap: gaps,
-            viewportSpan: viewportSpan,
-            motion: motion,
-            sizeKeyPath: orientation.settledSpanKeyPath,
+            context: context,
             animate: true,
             centerMode: settings.centerFocusedColumn,
             alwaysCenterSingleColumn: settings.alwaysCenterSingleColumn,
             animationConfig: animationConfig,
             fromContainerIndex: prevIdx,
             scale: scale,
-            workingArea: workingFrame,
-            viewFrame: viewFrame,
-            orientation: orientation
+            viewFrame: viewFrame
         )
     }
 
@@ -338,484 +282,17 @@ extension NiriLayoutEngine {
         }
     }
 
-    func focusTarget(
-        direction: Direction,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        if direction.primaryStep(for: orientation) != nil {
-            return moveSelectionCrossContainer(
-                direction: direction,
-                currentSelection: currentSelection,
-                in: workspaceId,
-                motion: motion,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation,
-                viewportOrientation: orientation
-            )
-        }
-
-        let target = moveSelectionWithinContainer(
-            direction: direction,
-            currentSelection: currentSelection,
-            orientation: orientation,
-            workspaceId: workspaceId
-        )
-
-        if let target {
-            ensureSelectionVisible(
-                node: target,
-                in: workspaceId,
-                motion: motion,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
-            )
-        }
-        return target
-    }
-
-    private func focusCombined(
-        verticalDirection: Direction,
-        horizontalDirection: Direction,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation,
-        targetRowIndex: Int? = nil
-    ) -> NiriNode? {
-        if let target = moveSelectionVertical(
-            direction: verticalDirection,
-            currentSelection: currentSelection,
-            in: workspaceId
-        ) {
-            ensureSelectionVisible(
-                node: target,
-                in: workspaceId,
-                motion: motion,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
-            )
-            return target
-        }
-
-        return moveSelectionHorizontal(
-            direction: horizontalDirection,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation,
-            targetRowIndex: targetRowIndex
-        )
-    }
-
-    func focusDownOrLeft(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusCombined(
-            verticalDirection: .down,
-            horizontalDirection: .left,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation,
-            targetRowIndex: Int.max
-        )
-    }
-
-    func focusUpOrRight(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusCombined(
-            verticalDirection: .up,
-            horizontalDirection: .right,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    private func focusColumnByIndex(
-        _ targetIndex: Int,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        let columns = projectedColumns(in: workspaceId)
-        guard columns.indices.contains(targetIndex) else { return nil }
-
-        if let currentWindow = currentSelection as? NiriWindow,
-           !isExcludedFromProjection(currentWindow.token, in: workspaceId),
-           let currentColumn = column(of: currentSelection)
-        {
-            updateActiveTileIdx(for: currentSelection.id, in: currentColumn)
-        }
-
-        state.activatePrevColumnOnRemoval = nil
-
-        let targetColumn = columns[targetIndex]
-        let windows = targetColumn.windows
-        guard !windows.isEmpty else { return nil }
-
-        let target = projectedActiveWindow(in: targetColumn) ?? windows[0]
-        ensureSelectionVisible(
-            node: target,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-        return target
-    }
-
-    func focusColumnFirst(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusColumnByIndex(
-            0,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusColumnLast(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        let columns = projectedColumns(in: workspaceId)
-        guard !columns.isEmpty else { return nil }
-        return focusColumnByIndex(
-            columns.count - 1,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusColumn(
-        _ columnIndex: Int,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusColumnByIndex(
-            columnIndex,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusWindowInColumn(
-        _ windowIndex: Int,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusWindowAtNiriIndex(
-            windowIndex,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusWindowTop(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusWindowAtVisualIndex(
-            0,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusWindowBottom(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        return focusWindowAtVisualIndex(
-            Int.max,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusWindowDownOrTop(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        if let target = moveSelectionVertical(
-            direction: .down,
-            currentSelection: currentSelection,
-            in: workspaceId
-        ) {
-            ensureSelectionVisible(
-                node: target,
-                in: workspaceId,
-                motion: motion,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
-            )
-            return target
-        }
-
-        return focusWindowTop(
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    func focusWindowUpOrBottom(
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        assertSanctionedMutation()
-        if let target = moveSelectionVertical(
-            direction: .up,
-            currentSelection: currentSelection,
-            in: workspaceId
-        ) {
-            ensureSelectionVisible(
-                node: target,
-                in: workspaceId,
-                motion: motion,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
-            )
-            return target
-        }
-
-        return focusWindowBottom(
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    private func focusWindowAtNiriIndex(
-        _ oneBasedWindowIndex: Int,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        let visualIndex = oneBasedWindowIndex <= 1 ? 0 : oneBasedWindowIndex - 1
-        return focusWindowAtVisualIndex(
-            visualIndex,
-            currentSelection: currentSelection,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-    }
-
-    private func focusWindowAtVisualIndex(
-        _ visualIndex: Int,
-        currentSelection: NiriNode,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
-    ) -> NiriNode? {
-        guard let currentColumn = column(of: currentSelection) else { return nil }
-
-        let windows = projectedWindows(in: currentColumn, workspaceId: workspaceId)
-        guard !windows.isEmpty else { return nil }
-
-        let clampedVisualIndex = min(max(visualIndex, 0), windows.count - 1)
-        let projectedStorageIndex = windows.count - 1 - clampedVisualIndex
-        let target = windows[projectedStorageIndex]
-        guard let durableStorageIndex = currentColumn.windowNodes.firstIndex(where: { $0 === target }) else {
-            return nil
-        }
-        currentColumn.setActiveTileIdx(durableStorageIndex)
-        if currentColumn.isTabbed {
-            updateTabbedColumnVisibility(column: currentColumn)
-        }
-
-        ensureSelectionVisible(
-            node: target,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-        return target
-    }
-
-    func focusPrevious(
-        currentNodeId: NodeId?,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation,
-        limitToWorkspace: Bool = true
-    ) -> NiriWindow? {
-        assertSanctionedMutation()
-        let searchWorkspaceId = limitToWorkspace ? workspaceId : nil
-        guard let previousWindow = findMostRecentlyFocusedWindow(
-            excluding: currentNodeId,
-            in: searchWorkspaceId
-        ) else {
+    private func projectedRow(in targetColumn: NiriProjectedColumn, targetRowIndex: Int?) -> NiriWindow? {
+        let targetRows = targetColumn.windows
+        guard !targetRows.isEmpty else {
             return nil
         }
 
-        state.activatePrevColumnOnRemoval = nil
-
-        ensureSelectionVisible(
-            node: previousWindow,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-
-        return previousWindow
+        let activeWindow = projectedActiveWindow(in: targetColumn)
+        let activeRowIndex = activeWindow.flatMap { activeWindow in
+            targetRows.firstIndex(where: { $0 === activeWindow })
+        } ?? 0
+        let clampedRowIndex = min(targetRowIndex ?? activeRowIndex, targetRows.count - 1)
+        return targetRows[clampedRowIndex]
     }
 }

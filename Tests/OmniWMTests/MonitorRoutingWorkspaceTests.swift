@@ -77,8 +77,11 @@ final class MonitorRoutingWorkspaceTests: XCTestCase {
 
         XCTAssertNil(manager.adjacentMonitor(from: top.id, direction: .right))
 
-        settings.monitorRoutingMode = .custom
-        settings.monitorRoutingSettings = [routing(1, "Top", 0, 0), routing(2, "Bottom", 1, 0)]
+        settings.monitors.routingMode = .custom
+        settings.monitors.arrangements = [MonitorArrangement(monitors: [
+            routing(1, "Top", 0, 0),
+            routing(2, "Bottom", 1, 0)
+        ])]
 
         XCTAssertEqual(manager.adjacentMonitor(from: top.id, direction: .right)?.id, bottom.id)
         XCTAssertEqual(manager.adjacentMonitor(from: bottom.id, direction: .left)?.id, top.id)
@@ -92,8 +95,8 @@ final class MonitorRoutingWorkspaceTests: XCTestCase {
         let right = makeMonitor(2, "R", CGRect(x: 1920, y: 0, width: 1920, height: 1080))
         manager.applyMonitorConfigurationChange([left, right])
 
-        settings.monitorRoutingMode = .custom
-        settings.monitorRoutingSettings = []
+        settings.monitors.routingMode = .custom
+        settings.monitors.arrangements = []
 
         XCTAssertEqual(manager.adjacentMonitor(from: left.id, direction: .right)?.id, right.id)
     }
@@ -136,5 +139,44 @@ final class MonitorRoutingWorkspaceTests: XCTestCase {
             ),
             .monitor(topRight)
         )
+    }
+
+    func testCustomArrangementsSurviveHomeWorkHomeAndSettingsReload() throws {
+        let settings = makeSettings()
+        let manager = WorkspaceManager(settings: settings)
+        let laptop = makeMonitor(1, "Laptop", CGRect(x: 0, y: 0, width: 1440, height: 900))
+        let home = makeMonitor(2, "Home", CGRect(x: 1440, y: 0, width: 1920, height: 1080))
+        let work = makeMonitor(3, "Work", CGRect(x: 1440, y: 0, width: 1920, height: 1080))
+        settings.monitors.routingMode = .custom
+        manager.applyMonitorConfigurationChange([laptop, home])
+        settings.monitors.storeRoutingLayout(
+            [routing(1, "Laptop", 0, 1), routing(2, "Home", 0, 0)],
+            for: [laptop, home]
+        )
+        let homeArrangement = settings.monitors.arrangements[0]
+        XCTAssertEqual(manager.adjacentMonitor(from: laptop.id, direction: .up), home)
+        XCTAssertNil(manager.adjacentMonitor(from: laptop.id, direction: .right))
+
+        manager.applyMonitorConfigurationChange([laptop, work])
+        XCTAssertEqual(manager.adjacentMonitor(from: laptop.id, direction: .right), work)
+        XCTAssertNil(manager.adjacentMonitor(from: laptop.id, direction: .up))
+        settings.monitors.storeRoutingLayout(
+            [routing(1, "Laptop", 0, 0), routing(3, "Work", 1, 0)],
+            for: [laptop, work]
+        )
+        XCTAssertEqual(settings.monitors.arrangements.count, 2)
+        XCTAssertEqual(settings.monitors.arrangements[0], homeArrangement)
+        manager.applyMonitorConfigurationChange([home, laptop])
+        XCTAssertEqual(manager.adjacentMonitor(from: laptop.id, direction: .up), home)
+        XCTAssertNil(manager.adjacentMonitor(from: laptop.id, direction: .right))
+
+        let reloaded = makeSettings()
+        reloaded.applyExport(try SettingsTOMLCodec.decode(SettingsTOMLCodec.encode(settings.toExport())))
+        let restarted = WorkspaceManager(settings: reloaded)
+        restarted.applyMonitorConfigurationChange([home, laptop])
+        XCTAssertEqual(reloaded.monitors.arrangements, settings.monitors.arrangements)
+        XCTAssertEqual(restarted.adjacentMonitor(from: laptop.id, direction: .up), home)
+        restarted.applyMonitorConfigurationChange([laptop, work])
+        XCTAssertEqual(restarted.adjacentMonitor(from: laptop.id, direction: .right), work)
     }
 }

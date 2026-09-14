@@ -110,6 +110,47 @@ public struct IPCCommandArgumentDescriptor: Codable, Equatable, Sendable {
     public let kind: IPCCommandArgumentKind
     public let summary: String
 
+    static let direction = Self(
+        kind: .direction,
+        summary: "Direction argument."
+    )
+    static let workspaceNumber = Self(
+        kind: .workspaceNumber,
+        summary: "Positive numeric workspace ID."
+    )
+    static let slotNumber = Self(
+        kind: .workspaceNumber,
+        summary: "One-based position in the interaction monitor's ordered workspace list."
+    )
+    static let columnIndex = Self(
+        kind: .columnIndex,
+        summary: "One-based column index."
+    )
+    static let windowIndex = Self(
+        kind: .windowIndex,
+        summary: "One-based window index within the focused column."
+    )
+    static let scratchpadIndex = Self(
+        kind: .scratchpadIndex,
+        summary: "Scratchpad slot from 1 to 10."
+    )
+    static let layout = Self(
+        kind: .layout,
+        summary: "Workspace layout selection."
+    )
+    static let resizeAxis = Self(
+        kind: .resizeAxis,
+        summary: "Dwindle split axis."
+    )
+    static let resizeOperation = Self(
+        kind: .resizeOperation,
+        summary: "Whether to grow or shrink."
+    )
+    static let sizeChange = Self(
+        kind: .sizeChange,
+        summary: "Size change such as 100, 50%, +10, or -10%."
+    )
+
     public init(kind: IPCCommandArgumentKind, summary: String) {
         self.kind = kind
         self.summary = summary
@@ -137,6 +178,21 @@ public struct IPCCommandDescriptor: Codable, Equatable, Sendable {
         self.summary = summary
         self.arguments = arguments
         self.layoutCompatibility = layoutCompatibility
+    }
+
+    init(
+        name: IPCCommandName,
+        summary: String,
+        arguments: [IPCCommandArgumentDescriptor] = [],
+        layoutCompatibility: IPCAutomationLayoutCompatibility = .shared
+    ) {
+        self.init(
+            commandWords: [name.rawValue],
+            name: name,
+            summary: summary,
+            arguments: arguments,
+            layoutCompatibility: layoutCompatibility
+        )
     }
 
     private static func makePath(
@@ -1160,13 +1216,8 @@ public enum IPCAutomationManifest {
     public static func queryDescriptor(for name: IPCQueryName) -> IPCQueryDescriptor? {
         queryDescriptors.first { $0.name == name }
     }
-
     public static func commandDescriptor(for name: IPCCommandName) -> IPCCommandDescriptor? {
         commandDescriptors.first { $0.name == name }
-    }
-
-    public static func ruleActionDescriptor(for name: IPCRuleActionName) -> IPCRuleActionDescriptor? {
-        ruleActionDescriptors.first { $0.name == name }
     }
 
     public static func commandDescriptors(matching commandWords: [String]) -> [IPCCommandDescriptor] {
@@ -1181,20 +1232,5 @@ public enum IPCAutomationManifest {
                 guard commandWords.count >= descriptor.commandWords.count else { return false }
                 return Array(commandWords.prefix(descriptor.commandWords.count)) == descriptor.commandWords
             }
-    }
-
-    public static func workspaceActionDescriptors(matching actionWords: [String]) -> [IPCWorkspaceActionDescriptor] {
-        workspaceActionDescriptors
-            .sorted { $0.path < $1.path }
-            .filter { descriptor in
-                guard actionWords.count >= descriptor.actionWords.count else { return false }
-                return Array(actionWords.prefix(descriptor.actionWords.count)) == descriptor.actionWords
-            }
-    }
-
-    public static func expandedChannels(for request: IPCSubscribeRequest) -> [IPCSubscriptionChannel] {
-        let channels = request.allChannels ? IPCSubscriptionChannel.allCases : request.channels
-        var seen: Set<IPCSubscriptionChannel> = []
-        return channels.filter { seen.insert($0).inserted }
     }
 }

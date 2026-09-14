@@ -169,55 +169,6 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         XCTAssertFalse(recorder.isVerboseStoragePrepared)
     }
 
-    func testLiveDisplayLinkTimestampRestartsAtCaptureGenerationBoundary() {
-        var state = LayoutRefreshState()
-        let displayId: CGDirectDisplayID = 17
-
-        XCTAssertNil(
-            state.replaceDisplayLinkTraceTimestamp(1, for: displayId, captureGeneration: 41)
-        )
-        XCTAssertEqual(
-            state.replaceDisplayLinkTraceTimestamp(1.01, for: displayId, captureGeneration: 41),
-            1
-        )
-        XCTAssertNil(
-            state.replaceDisplayLinkTraceTimestamp(30, for: displayId, captureGeneration: 42)
-        )
-        XCTAssertEqual(state.displayLinkTraceCaptureGeneration, 42)
-        XCTAssertEqual(state.lastDisplayLinkTimestampByDisplay[displayId], 30)
-    }
-
-    func testStoppedDisplayLinkDoesNotSeedRestartedTraceInterval() {
-        var state = LayoutRefreshState()
-        let displayId: CGDirectDisplayID = 18
-        let captureGeneration: UInt64 = 43
-
-        XCTAssertNil(
-            state.replaceDisplayLinkTraceTimestamp(1, for: displayId, captureGeneration: captureGeneration)
-        )
-        XCTAssertEqual(
-            state.replaceDisplayLinkTraceTimestamp(1.00695, for: displayId, captureGeneration: captureGeneration),
-            1
-        )
-
-        state.endDisplayLinkTraceSession(for: displayId)
-
-        let previousTimestamp = state.replaceDisplayLinkTraceTimestamp(
-            30,
-            for: displayId,
-            captureGeneration: captureGeneration
-        )
-        let expectedMs = 6.95
-        let intervalMs = previousTimestamp.map { (30 - $0) * 1_000 } ?? 0
-        let totalMs = 1.4
-        let dropped = previousTimestamp != nil && intervalMs > 1.5 * expectedMs
-            || totalMs > expectedMs
-
-        XCTAssertNil(previousTimestamp)
-        XCTAssertEqual(intervalMs, 0)
-        XCTAssertFalse(dropped)
-    }
-
     @MainActor
     func testDelayedPriorCaptureLineageIsZeroedDuringNextCapture() {
         let firstGeneration: UInt64 = 101
@@ -276,13 +227,14 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
             traceRequestId: staleTraceRequestId
         )
         generations.invalidateAndRemove(windowId)
-        _ = AppAXContext.executeFrameWriteRequests(
-            [request],
-            pid: pid,
-            axApp: AXUIElementCreateApplication(pid),
+        _ = AppAXFrameBatchWriter(
             generations: generations,
             suppression: nil,
             hardSuppression: nil,
+            trace: .init(context: .init(pid: pid, callbackGeneration: 0), bundleId: nil, lane: .ordinary, drainId: 0)
+        ).execute(
+            [request],
+            axApp: AXUIElementCreateApplication(pid),
             isCancelled: { false }
         )
 
@@ -299,11 +251,11 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
 
     func testRetryMailboxQueueDelayExcludesPriorAttemptAndRefetchTime() {
         XCTAssertEqual(
-            AppAXContext.mailboxQueueDelay(attempt: 1, startedNs: 900, enqueuedAt: 400),
+            AppAXFrameWriteTrace.mailboxQueueDelay(attempt: 1, startedNs: 900, enqueuedAt: 400),
             500
         )
         XCTAssertEqual(
-            AppAXContext.mailboxQueueDelay(attempt: 2, startedNs: 9_000, enqueuedAt: 400),
+            AppAXFrameWriteTrace.mailboxQueueDelay(attempt: 2, startedNs: 9_000, enqueuedAt: 400),
             0
         )
     }
@@ -325,10 +277,7 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         let failure = AXFrameWriteFailureReason.sizeWriteFailed(.attributeUnsupported)
         let firstRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: false,
                 terminalObserver: nil,
                 traceOrigin: FrameEffectTraceContext.originForSubmission()
@@ -343,10 +292,7 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         ])
         let retryRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: true,
                 terminalObserver: nil,
                 parentTraceRequestId: firstRequest.traceRequestId
@@ -386,20 +332,14 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         let frame = CGRect(x: 20, y: 30, width: 400, height: 300)
         let firstRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: expectedWindow,
-                frame: frame,
+                .init(pid: pid, window: expectedWindow, frame: frame),
                 isRetry: false,
                 terminalObserver: nil,
                 traceOrigin: FrameEffectTraceContext.originForSubmission()
             ).request
         )
         let coalesced = ledger.prepareFrameApplication(
-            pid: pid,
-            windowId: windowId,
-            expectedWindow: expectedWindow,
-            frame: frame,
+            .init(pid: pid, window: expectedWindow, frame: frame),
             isRetry: false,
             terminalObserver: nil,
             traceOrigin: FrameEffectTraceContext.originForSubmission()
@@ -514,6 +454,26 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         )
     }
 
+    private func observationRequest(
+        traceRequestId: UInt64,
+        requestId: AXFrameRequestId,
+        pid: pid_t,
+        windowId: Int,
+        frame: CGRect
+    ) -> AppAXFrameWriteRequest {
+        AppAXFrameWriteRequest(
+            requestId: requestId,
+            pid: pid,
+            windowId: windowId,
+            expectedWindow: AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId),
+            frame: frame,
+            currentFrameHint: nil,
+            generation: 1,
+            verify: false,
+            traceRequestId: traceRequestId
+        )
+    }
+
     @MainActor
     func testFrameObservationStaleScheduleHandsOffWithoutSamplingReplacement() throws {
         let tracker = FrameEffectObservationTracker(timeoutNs: 1_000, maxMismatchCount: 2)
@@ -526,24 +486,30 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         defer { tracker.endCapture() }
 
         tracker.register(
-            traceRequestId: firstTraceId,
-            requestId: 1,
+            observationRequest(
+                traceRequestId: firstTraceId,
+                requestId: 1,
+                pid: 7,
+                windowId: 42,
+                frame: firstTarget
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: firstTarget,
             startedNs: 10
         )
         let staleToken = try XCTUnwrap(tracker.noteFrameChanged(windowId: 42, eventNs: 20))
         tracker.register(
-            traceRequestId: replacementTraceId,
-            requestId: 2,
+            observationRequest(
+                traceRequestId: replacementTraceId,
+                requestId: 2,
+                pid: 7,
+                windowId: 42,
+                frame: replacementTarget
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: replacementTarget,
             startedNs: 30
         )
         XCTAssertNil(tracker.noteFrameChanged(windowId: 42, eventNs: 40))
@@ -578,13 +544,16 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
 
         tracker.beginCapture(generation: captureGeneration, startTimeoutTask: false)
         tracker.register(
-            traceRequestId: traceRequestId,
-            requestId: 1,
+            observationRequest(
+                traceRequestId: traceRequestId,
+                requestId: 1,
+                pid: 7,
+                windowId: 42,
+                frame: CGRect(x: 10, y: 20, width: 300, height: 200)
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: CGRect(x: 10, y: 20, width: 300, height: 200),
             startedNs: 10
         )
         XCTAssertNotNil(tracker.noteFrameChanged(windowId: 42, eventNs: 20))
@@ -608,13 +577,16 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
 
         tracker.beginCapture(generation: firstGeneration, startTimeoutTask: false)
         tracker.register(
-            traceRequestId: firstTraceRequestId,
-            requestId: 1,
+            observationRequest(
+                traceRequestId: firstTraceRequestId,
+                requestId: 1,
+                pid: 7,
+                windowId: 42,
+                frame: target
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: target,
             startedNs: 10
         )
         let priorToken = try XCTUnwrap(tracker.noteFrameChanged(windowId: 42, eventNs: 20))
@@ -623,13 +595,16 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         tracker.beginCapture(generation: secondGeneration, startTimeoutTask: false)
         defer { tracker.endCapture() }
         tracker.register(
-            traceRequestId: secondTraceRequestId,
-            requestId: 2,
+            observationRequest(
+                traceRequestId: secondTraceRequestId,
+                requestId: 2,
+                pid: 7,
+                windowId: 42,
+                frame: target
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: target,
             startedNs: 30
         )
         let currentToken = try XCTUnwrap(tracker.noteFrameChanged(windowId: 42, eventNs: 40))
@@ -665,13 +640,16 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
 
         let traceRequestId = FrameEffectTraceContext.makeRequestTraceId()
         FrameEffectObservationTracker.shared.register(
-            traceRequestId: traceRequestId,
-            requestId: 1,
+            observationRequest(
+                traceRequestId: traceRequestId,
+                requestId: 1,
+                pid: pid,
+                windowId: windowId,
+                frame: target
+            ),
             pid: pid,
-            windowId: windowId,
             lane: .ordinary,
             attempt: 1,
-            target: target,
             startedNs: 10
         )
         manager.scheduleFrameRetry(
@@ -686,13 +664,38 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
             )
         )
 
-        manager.cancelPendingFrameJobs([(pid: pid, windowId: windowId)])
+        manager.cancelPendingFrameJobs([(pid: pid, windowId: windowId)], reason: "test")
 
         XCTAssertEqual(FrameEffectObservationTracker.shared.pendingCount, 0)
         let trace = FrameApplyTrace.shared.dump()
         XCTAssertTrue(trace.contains("event=outcome=skip/cancelled"))
         XCTAssertTrue(trace.contains("event=server-observation/write-terminal/terminal"))
         XCTAssertFalse(trace.contains("server-observation/timeout"))
+    }
+
+    @MainActor
+    func testFrameJobCancellationRecordsItsCauseAndWhatItCleared() {
+        let manager = AXManager()
+        let pid: pid_t = 705_002
+        let windowId = 705_102
+        let target = CGRect(x: 10, y: 20, width: 300, height: 200)
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId)
+        manager.cancelPendingFrameJobs([(pid: pid, windowId: windowId)], reason: "before-capture")
+
+        FrameApplyTrace.shared.beginCapture()
+        defer {
+            manager.cleanup()
+            FrameApplyTrace.shared.endCapture()
+        }
+        manager.cancelPendingFrameJobs([(pid: pid, windowId: windowId)], reason: "idle")
+        XCTAssertNotNil(manager.stageFrameWrite(for: AXFrameApplicationTarget(pid: pid, window: window, frame: target)))
+        manager.cancelPendingFrameJobs([(pid: pid, windowId: windowId)], reason: "invalidation")
+
+        let trace = FrameApplyTrace.shared.dump()
+        XCTAssertFalse(trace.contains("cancelled/before-capture"))
+        XCTAssertFalse(trace.contains("cancelled/idle"))
+        XCTAssertTrue(trace.contains("event=outcome=cancelled/invalidation/pending target=(10,20 300x200)"))
+        XCTAssertFalse(manager.hasPendingFrameWrite(for: windowId))
     }
 
     @MainActor
@@ -704,13 +707,16 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         tracker.beginCapture(generation: captureGeneration, startTimeoutTask: false)
         defer { tracker.endCapture() }
         tracker.register(
-            traceRequestId: traceRequestId,
-            requestId: 1,
+            observationRequest(
+                traceRequestId: traceRequestId,
+                requestId: 1,
+                pid: 7,
+                windowId: 42,
+                frame: target
+            ),
             pid: 7,
-            windowId: 42,
             lane: .ordinary,
             attempt: 1,
-            target: target,
             startedNs: 10
         )
 
@@ -820,14 +826,22 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
             AnimationTickTrace.Record(
                 mediaTime: 1,
                 displayId: 1,
-                intervalMs: 99,
-                expectedMs: 6,
+                timing: DisplayTickTiming(
+                    intervalMs: 99,
+                    expectedMs: 6,
+                    workMs: 6,
+                    entrySlackMs: 2.5,
+                    completionSlackMs: -3.5
+                ),
                 scrollMs: 5,
                 dwindleMs: 0,
                 closingMs: 0,
                 reconcileMs: 1,
-                totalMs: 6,
-                dropped: true
+                classification: DisplayTickClassification(
+                    longTimestampGap: true,
+                    workExceededNominalPeriod: false,
+                    completionPastTarget: true
+                )
             )
         )
         BorderOpMetricsRecorder.shared.noteApply()
@@ -893,7 +907,15 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         XCTAssertTrue(appVisibilityDump.contains("source=service"))
         XCTAssertTrue(RawAXNotificationTrace.shared.dump().contains("ax.during"))
         XCTAssertTrue(NiriLayoutTrace.shared.dump().contains("jump 0→10"))
-        XCTAssertTrue(AnimationTickTrace.shared.dump().contains("DROPPED"))
+        let tickDump = AnimationTickTrace.shared.dump()
+        XCTAssertTrue(tickDump.contains("entry_slack=2.50ms completion_slack=-3.50ms"))
+        XCTAssertTrue(tickDump.hasSuffix(" LONG_GAP COMPLETION_PAST_TARGET"))
+        XCTAssertFalse(tickDump.contains("WORK_OVER_PERIOD"))
+        XCTAssertTrue(tickDump.hasSuffix(
+            "t=1.000 effect=0 disp=1 interval=99.00ms expected=6.00ms entry_slack=2.50ms"
+                + " completion_slack=-3.50ms scroll=5.00ms dwindle=0.00ms closing=0.00ms"
+                + " reconcile=1.00ms total=6.00ms LONG_GAP COMPLETION_PAST_TARGET"
+        ))
         XCTAssertTrue(BorderOpMetricsRecorder.shared.dump().contains("applyCalls=1"))
         XCTAssertTrue(ScrollTickTrace.shared.dump().contains("commit=290.00ms"))
         XCTAssertTrue(AXWriteLatencyTrace.shared.dump().contains("pid=4242"))

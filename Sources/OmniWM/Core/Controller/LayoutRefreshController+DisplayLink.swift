@@ -6,7 +6,7 @@ import Foundation
 import QuartzCore
 
 extension LayoutRefreshController {
-    private enum DisplayLinkStopReason {
+    enum DisplayLinkStopReason {
         case idle
         case noWork
         case monitorDisconnect
@@ -26,7 +26,7 @@ extension LayoutRefreshController {
         }
     }
 
-    private func getOrCreateDisplayLink(for displayId: CGDirectDisplayID) -> CADisplayLink? {
+    func getOrCreateDisplayLink(for displayId: CGDirectDisplayID) -> CADisplayLink? {
         if let existing = layoutState.displayLinksByDisplay[displayId] {
             return existing
         }
@@ -91,15 +91,8 @@ extension LayoutRefreshController {
     }
 
     @objc private func displayLinkFired(_ displayLink: CADisplayLink) {
-        guard let displayId = layoutState.displayLinksByDisplay.first(where: { $0.value === displayLink })?.key
-        else { return }
-        performanceCounters?.displayLinkCallbacks &+= 1
-        guard hasDisplayLinkWork(for: displayId) else {
-            performanceCounters?.noWorkDisplayLinkCallbacks &+= 1
-            stopDisplayLinkIfIdle(for: displayId, reason: .noWork)
-            return
-        }
-        performanceCounters?.meaningfulDisplayLinkCallbacks &+= 1
+        let entryTime = CACurrentMediaTime()
+        guard let displayId = activeDisplayId(for: displayLink) else { return }
 
         let traceActive = AnimationTickTrace.shared.isActive
         let traceOrigin = traceActive
@@ -113,52 +106,39 @@ extension LayoutRefreshController {
                 FrameEffectTraceContext.restore(previousTraceOrigin)
             }
         }
-        let previousTimestamp = traceActive
-            ? layoutState.replaceDisplayLinkTraceTimestamp(
-                displayLink.timestamp,
-                for: displayId,
-                captureGeneration: FrameEffectTraceContext.captureGeneration(of: traceOrigin.effectId)
-            )
-            : nil
-        let startTime = traceActive ? CACurrentMediaTime() : 0
-        var scrollEndTime: CFTimeInterval = 0
-        var dwindleEndTime: CFTimeInterval = 0
-        var closingEndTime: CFTimeInterval = 0
-
-        SkyLight.shared.withTransactionScope {
-            niriHandler.tickScrollAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
-            scrollEndTime = traceActive ? CACurrentMediaTime() : 0
-            dwindleHandler.tickDwindleAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
-            dwindleEndTime = traceActive ? CACurrentMediaTime() : 0
-            tickClosingAnimations(targetTime: displayLink.targetTimestamp, displayId: displayId)
-            closingEndTime = traceActive ? CACurrentMediaTime() : 0
-            controller?.surfaceReconciler.reconcileAnimationTick()
-        }
+        let previousTickTimestamp = layoutState.lastTickTimestampByDisplay
+            .updateValue(displayLink.timestamp, forKey: displayId)
+        let intervalMs = previousTickTimestamp.map { (displayLink.timestamp - $0) * 1000 } ?? 0
+        let phaseTiming = applyDisplayAnimationTick(displayLink, displayId: displayId, traceActive: traceActive)
         stopDisplayLinkIfIdle(for: displayId)
         auditParkVisibility(displayId: displayId)
 
-        guard traceActive else { return }
-        let endTime = CACurrentMediaTime()
-
+        let completionTime = CACurrentMediaTime()
         let expectedMs = displayLink.duration * 1000
-        let intervalMs = previousTimestamp.map { (displayLink.timestamp - $0) * 1000 } ?? 0
-        let totalMs = (endTime - startTime) * 1000
-        let dropped = previousTimestamp != nil && intervalMs > 1.5 * expectedMs
-            || expectedMs > 0 && totalMs > expectedMs
+        let totalMs = (completionTime - entryTime) * 1000
+        let entrySlackMs = (displayLink.targetTimestamp - entryTime) * 1000
+        let completionSlackMs = (displayLink.targetTimestamp - completionTime) * 1000
+        let timing = DisplayTickTiming(
+            intervalMs: intervalMs,
+            expectedMs: expectedMs,
+            workMs: totalMs,
+            entrySlackMs: entrySlackMs,
+            completionSlackMs: completionSlackMs
+        )
+        let classification = displayTickMetrics.record(timing, hasPreviousTick: previousTickTimestamp != nil)
 
+        guard traceActive else { return }
         AnimationTickTrace.shared.record(
             AnimationTickTrace.Record(
-                mediaTime: endTime,
+                mediaTime: completionTime,
                 effectId: traceOrigin.effectId,
                 displayId: displayId,
-                intervalMs: intervalMs,
-                expectedMs: expectedMs,
-                scrollMs: (scrollEndTime - startTime) * 1000,
-                dwindleMs: (dwindleEndTime - scrollEndTime) * 1000,
-                closingMs: (closingEndTime - dwindleEndTime) * 1000,
-                reconcileMs: (endTime - closingEndTime) * 1000,
-                totalMs: totalMs,
-                dropped: dropped
+                timing: timing,
+                scrollMs: (phaseTiming.scrollEndTime - entryTime) * 1000,
+                dwindleMs: (phaseTiming.dwindleEndTime - phaseTiming.scrollEndTime) * 1000,
+                closingMs: (phaseTiming.closingEndTime - phaseTiming.dwindleEndTime) * 1000,
+                reconcileMs: (completionTime - phaseTiming.closingEndTime) * 1000,
+                classification: classification
             )
         )
     }
@@ -272,41 +252,6 @@ extension LayoutRefreshController {
         }
     }
 
-    func startWindowCloseAnimation(entry: WindowState, monitor: Monitor) {
-        guard controller?.motionPolicy.animationsEnabled != false else { return }
-        guard let controller else { return }
-        guard !controller.workspaceManager.isAppHidden(entry.token) else { return }
-        guard let frame = fastFrame(for: entry.token, axRef: entry.axRef) else { return }
-
-        let displacement = CGPoint(x: 0, y: -12)
-        let animation = SpringAnimation(
-            from: 0,
-            to: 1,
-            startTime: CACurrentMediaTime(),
-            config: .balanced.with(epsilon: 0.01, velocityEpsilon: 0.1),
-            displayRefreshRate: layoutState.refreshRateByDisplay[monitor.displayId] ?? 60.0
-        )
-
-        var animations = layoutState.closingAnimationsByDisplay[monitor.displayId] ?? [:]
-        guard animations[entry.windowId] == nil else { return }
-        animations[entry.windowId] = LayoutRefreshState.ClosingAnimation(
-            pid: entry.pid,
-            windowId: entry.windowId,
-            axRef: entry.axRef,
-            fromFrame: frame,
-            displacement: displacement,
-            animation: animation
-        )
-        _ = closingAnimationId(for: animation)
-        layoutState.closingAnimationsByDisplay[monitor.displayId] = animations
-
-        guard let displayLink = getOrCreateDisplayLink(for: monitor.displayId) else {
-            rollbackClosingAnimationRegistration(windowId: entry.windowId, displayId: monitor.displayId)
-            return
-        }
-        displayLink.add(to: .main, forMode: .common)
-    }
-
     func cancelFrameAnimations(forPID pid: pid_t) {
         let displayIds = Array(layoutState.closingAnimationsByDisplay.keys)
         for displayId in displayIds {
@@ -371,19 +316,7 @@ extension LayoutRefreshController {
         lastSubmittedClosingFramesByAnimationId.removeAll(keepingCapacity: true)
     }
 
-    private func rollbackClosingAnimationRegistration(windowId: Int, displayId: CGDirectDisplayID) {
-        var animations = layoutState.closingAnimationsByDisplay[displayId] ?? [:]
-        if let animation = animations.removeValue(forKey: windowId) {
-            forgetClosingAnimation(animation)
-        }
-        if animations.isEmpty {
-            layoutState.closingAnimationsByDisplay.removeValue(forKey: displayId)
-        } else {
-            layoutState.closingAnimationsByDisplay[displayId] = animations
-        }
-    }
-
-    private func stopDisplayLinkIfIdle(
+    func stopDisplayLinkIfIdle(
         for displayId: CGDirectDisplayID,
         reason: DisplayLinkStopReason = .idle
     ) {
@@ -402,7 +335,7 @@ extension LayoutRefreshController {
     ) {
         guard let link = layoutState.displayLinksByDisplay.removeValue(forKey: displayId) else { return }
         link.invalidate()
-        layoutState.endDisplayLinkTraceSession(for: displayId)
+        layoutState.lastTickTimestampByDisplay.removeValue(forKey: displayId)
         performanceCounters?.displayLinksInvalidated &+= 1
         performanceCounters?.activeDisplayLinks = layoutState.displayLinksByDisplay.count
         switch reason {
@@ -435,72 +368,48 @@ extension LayoutRefreshController {
         }
     }
 
-    private func closingAnimationId(for animation: SpringAnimation) -> UUID {
-        let objectId = ObjectIdentifier(animation)
-        if let animationId = closingAnimationIdsByObjectId[objectId] {
-            return animationId
-        }
-        let animationId = UUID()
-        closingAnimationIdsByObjectId[objectId] = animationId
-        return animationId
+    private struct DisplayAnimationPhaseTiming {
+        let scrollEndTime: CFTimeInterval
+        let dwindleEndTime: CFTimeInterval
+        let closingEndTime: CFTimeInterval
     }
 
-    private func forgetClosingAnimation(_ animation: LayoutRefreshState.ClosingAnimation) {
-        guard let animationId = closingAnimationIdsByObjectId.removeValue(
-            forKey: ObjectIdentifier(animation.animation)
-        ) else {
-            return
+    private func applyDisplayAnimationTick(
+        _ displayLink: CADisplayLink,
+        displayId: CGDirectDisplayID,
+        traceActive: Bool
+    ) -> DisplayAnimationPhaseTiming {
+        var scrollEndTime: CFTimeInterval = 0
+        var dwindleEndTime: CFTimeInterval = 0
+        var closingEndTime: CFTimeInterval = 0
+
+        SkyLight.shared.withTransactionScope {
+            niriHandler.tickScrollAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
+            scrollEndTime = traceActive ? CACurrentMediaTime() : 0
+            dwindleHandler.tickDwindleAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
+            dwindleEndTime = traceActive ? CACurrentMediaTime() : 0
+            tickClosingAnimations(targetTime: displayLink.targetTimestamp, displayId: displayId)
+            closingEndTime = traceActive ? CACurrentMediaTime() : 0
+            controller?.surfaceReconciler.reconcileAnimationTick()
         }
-        lastSubmittedClosingFramesByAnimationId.removeValue(forKey: animationId)
+        return DisplayAnimationPhaseTiming(
+            scrollEndTime: scrollEndTime,
+            dwindleEndTime: dwindleEndTime,
+            closingEndTime: closingEndTime
+        )
     }
 
-    private func tickClosingAnimations(targetTime: CFTimeInterval, displayId: CGDirectDisplayID) {
-        guard var animations = layoutState.closingAnimationsByDisplay.removeValue(forKey: displayId),
-              !animations.isEmpty
-        else {
-            return
+    private func activeDisplayId(for displayLink: CADisplayLink) -> CGDirectDisplayID? {
+        guard let displayId = layoutState.displayLinksByDisplay.first(where: { $0.value === displayLink })?.key
+        else { return nil }
+        performanceCounters?.displayLinkCallbacks &+= 1
+        guard hasDisplayLinkWork(for: displayId) else {
+            performanceCounters?.noWorkDisplayLinkCallbacks &+= 1
+            stopDisplayLinkIfIdle(for: displayId, reason: .noWork)
+            return nil
         }
+        performanceCounters?.meaningfulDisplayLinkCallbacks &+= 1
 
-        var completedWindowIds: [Int] = []
-        completedWindowIds.reserveCapacity(animations.count)
-        var targets: [AXClosingFrameTarget] = []
-        targets.reserveCapacity(animations.count)
-
-        for (windowId, animation) in animations {
-            if controller?.workspaceManager.isAppHidden(pid: animation.pid) == true {
-                completedWindowIds.append(windowId)
-                continue
-            }
-            let frame = animation.currentFrame(at: targetTime)
-            let animationId = closingAnimationId(for: animation.animation)
-            targets.append(
-                AXClosingFrameTarget(
-                    animationId: animationId,
-                    pid: animation.pid,
-                    expectedWindow: animation.axRef,
-                    frame: frame,
-                    currentFrameHint: lastSubmittedClosingFramesByAnimationId[animationId]
-                        ?? animation.fromFrame
-                )
-            )
-            lastSubmittedClosingFramesByAnimationId[animationId] = frame
-            if animation.isComplete(at: targetTime) {
-                completedWindowIds.append(windowId)
-            }
-        }
-
-        controller?.axManager.applyClosingFrames(targets)
-
-        for windowId in completedWindowIds {
-            if let animation = animations.removeValue(forKey: windowId) {
-                forgetClosingAnimation(animation)
-            }
-        }
-
-        if animations.isEmpty {
-            stopDisplayLinkIfIdle(for: displayId)
-        } else {
-            layoutState.closingAnimationsByDisplay[displayId] = animations
-        }
+        return displayId
     }
 }

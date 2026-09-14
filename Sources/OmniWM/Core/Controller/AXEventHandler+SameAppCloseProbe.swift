@@ -15,7 +15,7 @@ extension AXEventHandler {
               origin == .external,
               let focusedToken,
               let entry = controller?.workspaceManager.entry(for: focusedToken),
-              managedWindowToken(focusedToken, matchesObservedPid: pid)
+              managedWindowTokenUsingCachedIdentity(focusedToken, matchesObservedPid: pid)
         else {
             return nil
         }
@@ -43,7 +43,12 @@ extension AXEventHandler {
             else {
                 return false
             }
-            return oldWindow.token == token && metadata?.workspaceId == workspaceId
+            let sourceToken = if let source = state.identityRebindSource {
+                controller?.workspaceManager.entry(for: source.handle)?.token
+            } else {
+                oldWindow.token
+            }
+            return sourceToken == token && metadata?.workspaceId == workspaceId
         }
     }
 

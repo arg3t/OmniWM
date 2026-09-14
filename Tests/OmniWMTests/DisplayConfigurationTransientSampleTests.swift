@@ -8,12 +8,14 @@ import XCTest
 
 @MainActor
 final class DisplayConfigurationTransientSampleTests: XCTestCase {
+    private var sampledMonitors: [Monitor] = []
+
     func testTransientUnusableResampleDoesNotTearDownPresentMonitor() throws {
         let controller = WindowAdmissionTestSupport.controller(prefix: "DisplayConfigurationTransientSampleTests")
         let manager = controller.serviceLifecycleManager
         defer { controller.layoutRefreshController.resetState() }
-        manager.topologyInventorySampleProvider = { nil }
-        manager.topologyInventorySleeper = { _ in await Task.yield() }
+        manager.topologyInventory.sampleProvider = { nil }
+        manager.topologyInventory.sleeper = { _ in await Task.yield() }
 
         let first = makeMonitor(displayId: 1, name: "First", originX: 0, width: 1440)
         let second = makeMonitor(displayId: 2, name: "Second", originX: 1440, width: 1440)
@@ -23,19 +25,19 @@ final class DisplayConfigurationTransientSampleTests: XCTestCase {
         let niriSecond = try XCTUnwrap(controller.niriEngine?.monitor(for: second.id))
         let seq = controller.workspaceManager.worldSeq
 
-        manager.currentMonitorsProvider = { [
+        manager.monitorConfiguration.currentMonitorsProvider = { [
             first,
             self.makeMonitor(displayId: 2, name: "Second", originX: 1440, width: 1)
         ] }
-        manager.handleDisplayEvent(.disconnected(second.id))
+        manager.monitorConfiguration.handle(.disconnected(second.id))
 
         XCTAssertTrue(controller.niriEngine?.monitor(for: second.id) === niriSecond)
         XCTAssertEqual(controller.workspaceManager.monitors, [first, second])
         XCTAssertEqual(controller.workspaceManager.worldSeq, seq)
 
         let moved = makeMonitor(displayId: 2, name: "Second", originX: 1540, width: 1440)
-        manager.currentMonitorsProvider = { [first, moved] }
-        manager.handleDisplayEvent(.reconfigured(moved))
+        manager.monitorConfiguration.currentMonitorsProvider = { [first, moved] }
+        manager.monitorConfiguration.handle(.reconfigured(moved))
 
         XCTAssertEqual(controller.workspaceManager.monitors, [first, moved])
         XCTAssertNotNil(controller.niriEngine?.monitor(for: second.id))
@@ -45,14 +47,14 @@ final class DisplayConfigurationTransientSampleTests: XCTestCase {
     func testObserverIgnoresUnusableSampleAsBaseline() {
         let first = makeMonitor(displayId: 1, name: "First", originX: 0, width: 1440)
         let second = makeMonitor(displayId: 2, name: "Second", originX: 1440, width: 1440)
-        var sample = [first, second]
-        let observer = DisplayConfigurationObserver(monitorSampler: { sample })
+        sampledMonitors = [first, second]
+        let observer = DisplayConfigurationObserver(monitorSampler: { self.sampledMonitors })
         var events: [DisplayConfigurationObserver.DisplayEvent] = []
         observer.setEventHandler { events.append($0) }
 
-        sample = [makeMonitor(displayId: 1, name: "First", originX: 0, width: 1), second]
+        sampledMonitors = [makeMonitor(displayId: 1, name: "First", originX: 0, width: 1), second]
         observer.sampleNow()
-        sample = [first, second]
+        sampledMonitors = [first, second]
         observer.sampleNow()
 
         XCTAssertTrue(events.isEmpty)

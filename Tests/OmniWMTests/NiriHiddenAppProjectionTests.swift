@@ -30,12 +30,14 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
             windows: [window],
             frames: [token: workingFrame],
             hiddenHandles: [token: .left],
-            engine: engine,
-            workspaceId: workspaceId,
-            canRestoreHiddenWorkspaceWindows: true,
-            reassertHidden: true,
-            excludedTokens: [token],
-            pendingParkWindowIds: [token.windowId]
+            context: NiriLayoutDiffContext(
+                engine: engine,
+                workspaceId: workspaceId,
+                canRestoreHiddenWorkspaceWindows: true,
+                reassertHidden: true,
+                excludedTokens: [token],
+                pendingParkWindowIds: [token.windowId]
+            )
         )
 
         XCTAssertTrue(diff.frameChanges.isEmpty)
@@ -121,12 +123,14 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
                 hidden,
                 into: targetColumn,
                 enteringFrom: .right,
-                in: workspaceId,
-                motion: .disabled,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &state
             )
         )
         engine.updateWindowConstraints(
@@ -175,12 +179,14 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
                 hidden,
                 into: column,
                 enteringFrom: .right,
-                in: workspaceId,
-                motion: .disabled,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &state
             )
         )
         column.displayMode = .tabbed
@@ -224,15 +230,18 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
             excludedTokens: [fixture.hidden.token]
         )
 
-        let target = fixture.engine.focusTarget(
-            direction: .right,
-            currentSelection: fixture.a,
-            in: fixture.workspaceId,
+        let context = NiriInteractionContext(
+            workspaceId: fixture.workspaceId,
             motion: .disabled,
-            state: &state,
             workingFrame: workingFrame,
             gaps: gap,
             orientation: .horizontal
+        )
+        let target = fixture.engine.focusTarget(
+            direction: .right,
+            currentSelection: fixture.a,
+            context: context,
+            state: &state
         ) as? NiriWindow
 
         XCTAssertTrue(try XCTUnwrap(target) === fixture.b)
@@ -279,15 +288,16 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
 
         let selectedWindow = fixture.engine.endProjectedGesture(
             state: &state,
-            in: fixture.workspaceId,
+            context: NiriInteractionContext(
+                workspaceId: fixture.workspaceId,
+                motion: .disabled,
+                workingFrame: workingFrame,
+                gaps: gap,
+                orientation: .horizontal
+            ),
             currentOffset: Double(projectedTarget),
             projectedOffset: Double(projectedTarget),
-            gap: gap,
-            viewportSpan: workingFrame.width,
-            orientation: .horizontal,
-            motion: .disabled,
-            centerMode: .always,
-            workingArea: workingFrame
+            centerMode: .always
         )
 
         XCTAssertEqual(state.activeColumnIndex, 2)
@@ -315,12 +325,14 @@ final class NiriHiddenAppProjectionTests: XCTestCase {
         XCTAssertTrue(
             fixture.engine.moveColumnToLast(
                 aColumn,
-                in: fixture.workspaceId,
-                motion: .disabled,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: fixture.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &state
             )
         )
         XCTAssertEqual(

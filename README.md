@@ -1,3 +1,9 @@
+# OmniWM
+
+OmniWM is a free, open-source, Developer ID-signed and Apple-notarized tiling window manager for Apple Silicon Macs running macOS 26 or later. It combines Niri-style orientation-aware scrolling containers and Hyprland-style Dwindle BSP layouts, selectable per workspace, with multi-monitor routing and optional local CLI/IPC automation.
+
+**[Website](https://omniwm.app)** · **[Documentation](https://omniwm.app/guides/quick-start/)** · **[Install](https://omniwm.app/guides/install/)** · **[Compatibility](https://omniwm.app/help/known-limitations/)**
+
 <p align="center">
   <a href="https://omniwm.app">
     <img src=".github/social-preview.png" alt="OmniWM — Do what you love easier, faster, better." width="100%">
@@ -360,6 +366,9 @@
       <a href="https://github.com/nekonora" title="Filippo Zaffoni">
         <img src="https://github.com/nekonora.png?size=96" width="72" alt="Filippo Zaffoni">
       </a>
+      <a href="https://github.com/henrikhestnes" title="Henrik Larsson Hestnes">
+        <img src="https://github.com/henrikhestnes.png?size=96" width="72" alt="Henrik Larsson Hestnes">
+      </a>
       <a href="https://github.com/henry-p" title="Henry Perschk">
         <img src="https://github.com/henry-p.png?size=96" width="72" alt="Henry Perschk">
       </a>
@@ -414,6 +423,9 @@
       <a href="https://github.com/llwt" title="Steven Nance">
         <img src="https://github.com/llwt.png?size=96" width="72" alt="Steven Nance">
       </a>
+      <a href="https://github.com/tayiorbeii" title="Taylor Bell">
+        <img src="https://github.com/tayiorbeii.png?size=96" width="72" alt="Taylor Bell">
+      </a>
       <a href="https://github.com/chenhaozhenss" title="Williamufo">
         <img src="https://github.com/chenhaozhenss.png?size=96" width="72" alt="Williamufo">
       </a>
@@ -431,8 +443,6 @@
 </table>
 <!-- contributors:end -->
 
-
-
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-26.0%2B-green?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/Apple%20Silicon-supported-green?logo=apple&logoColor=white" alt="Apple Silicon">
@@ -446,38 +456,43 @@
   <a href="https://trendshift.io/repositories/16758?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-16758" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/16758/monthly?language=Swift" alt="BarutSRB%2FOmniWM | Trendshift" width="250" height="55"/></a>
 </p>
 
+## Highlights
 
-- Real quake/sticky terminal using ghostty's libghostty
-- macOS native tab support
-- IPC/CLI
-- Scratchpads/sticky windows for any app
-- Niri Overview
+- Ghostty-powered quake/sticky terminal
+- Native macOS window-tab support
+- Local IPC and `omniwmctl` automation
+- Scratchpads and sticky windows for any app
+- Overview
 - Unified command palette for windows and app menus
-- App menu anywhere
-- Niri tabbed columns and Dwindle tile groups
-- Niri and Dwindle layout
-- Hide/unhide status bar icons (Similar to Ice Bar)
-- Keep awake (Similar to Caffeine)
-- Interactive workspace/app icon bar
+- Menu Anywhere
+- Niri-style tabbed containers and Dwindle tile groups
+- Niri-style scrolling and Hyprland-style Dwindle BSP layouts
+- Status-bar icon concealment (similar to Ice)
+- Keep Awake (similar to Caffeine)
+- Interactive workspace and app-icon bar
 - Many more features not shown in the video.
 
-## Known Limitations
+## Compatibility and Limitations
 
-- **Dwindle group restore** - Group membership and tab order are runtime layout state and are not restored after OmniWM restarts.
+OmniWM requires Apple Silicon, macOS 26 or later, Accessibility, Input Monitoring, and `Displays have separate Spaces`. Screen Recording is optional. Read the complete [Compatibility, Requirements & Limitations](https://omniwm.app/help/known-limitations/) page before installing.
+
+- **Dwindle restore scope** — After a restart OmniWM rebuilds each Dwindle workspace from the persisted placements: split orientation and ratio, tab-group membership, tab order, and the active tab. Fullscreen state and the selected window are not restored, and once a window without a persisted placement is present, later windows insert normally instead of being placed from the catalog.
+- **Scratchpad membership** — Window membership lasts for the current OmniWM process. Scratchpad labels persist, but memberships do not.
 
 ## Performance & Trust
 
 OmniWM is built for high responsiveness and smooth, crisp animations.
 
-- **Private APIs** - OmniWM leverages Apple's private APIs wherever technically possible in order to reduce latency and improve window management responsiveness.
-- **Refresh rate aware animations** - OmniWM targets true display refresh pacing (for example 60/120/144Hz) for animations.
-- **No SIP disable required** - OmniWM does not require System Integrity Protection (SIP) to be disabled and never will.
-- **Always notarized official releases** - Official OmniWM release builds are developer signed and notarized by Apple and will stay that way.
-- **Forever free, no limitations** - OmniWM is and will remain free to use forever, with no subscriptions, feature paywalls, trial limits, or usage caps.
+- **Direct macOS integration** — OmniWM uses public frameworks and selected Apple private APIs for window management and visual surfaces.
+- **Refresh-rate-aware animations** — Animation pacing follows the active display refresh rate, including 60, 120, and 144 Hz displays.
+- **SIP stays enabled** — Official OmniWM releases do not require disabling System Integrity Protection.
+- **Signed and notarized releases** — Official release builds are Developer ID signed and Apple-notarized.
+- **Free and open source** — OmniWM has no subscriptions, feature paywalls, trial limits, or usage caps and is licensed GPL-2.0-only.
 
 ## Requirements
 
 - macOS 26+ (Tahoe) on Apple Silicon
+- Hidden Bar concealment and optional issue-report rewriting require macOS 27 or later; rewriting also requires enabled Apple Intelligence and an available local model
 - Accessibility and Input Monitoring permissions (required at launch)
 - Screen Recording permission for Overview thumbnails, drag previews, and captured Hidden Bar glyphs (optional)
 - Displays have separate spaces **ON** (the macOS default; OmniWM pauses window management until it is enabled)
@@ -486,40 +501,61 @@ OmniWM is built for high responsiveness and smooth, crisp animations.
 
 ### Homebrew
 
+OmniWM is in the official Homebrew cask repository:
+
 ```bash
-brew tap BarutSRB/tap
-brew install omniwm
+brew install --cask omniwm
 ```
+
+This installs `OmniWM.app` and puts `omniwmctl` on your `PATH`.
+
+#### Upgrading
+
+Quit OmniWM first, then run `brew upgrade omniwm` and relaunch it. Homebrew replaces the app bundle underneath a running OmniWM.
+
+#### Migrating from the project tap
+
+`BarutSRB/tap` is retired: 0.6.7 was its final release, and every later version ships only through the official cask. If you installed from the tap, quit OmniWM and run these commands in this order:
+
+```bash
+brew update
+brew upgrade omniwm
+brew untap BarutSRB/tap
+```
+
+`brew update` has to come first: it fetches the retired tap's redirect to the official cask and moves your install over. Untapping before that would offer to uninstall OmniWM. `brew reinstall --cask homebrew/cask/omniwm` is optional and only switches the install record to the official cask right away.
 
 ### Nix
 
-OmniWM supports both community-maintained Nix packages below, alongside a real-world Home Manager
-configuration example. The packages install official OmniWM release artifacts, while their Nix
-expressions are maintained by DoomHammer and DavSanchez respectively.
+OmniWM is packaged in [nixpkgs](https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/om/omniwm/package.nix), maintained by mmfallacy and samiser, and Home Manager ships an official
+[`programs.omniwm` module](https://github.com/nix-community/home-manager/blob/master/modules/programs/omniwm.nix), maintained by DavSanchez. The package installs the signed release artifact with `bsdtar`, so the Developer ID
+signature stays valid, and exposes `OmniWM` and `omniwmctl` on `PATH`. Both currently live on unstable branches
+only (the nixpkgs unstable channels and Home Manager `master`) and may trail the latest GitHub release.
 
-| Package or example | Best for | Packaging or configuration difference |
-| --- | --- | --- |
-| [DoomHammer NUR package](https://nur.nix-community.org/repos/doomhammer/) | Fast release tracking | Its current `unzip` extraction does not preserve the release's valid Developer ID signature, and it installs the app bundle without exposing `omniwmctl` on `PATH`. |
-| [DavSanchez package](https://github.com/DavSanchez/nix-dotfiles/blob/master/pkgs/omniwm.nix) and [Home Manager module](https://github.com/DavSanchez/nix-dotfiles/blob/master/modules/home/omniwm.nix) | Signature-preserving, declarative integration | It may trail the latest release, but its `bsdtar` extraction preserves code signing and it provides `omniwmctl`, Home Manager settings, and launchd integration. |
-| [ryoppippi Home Manager configuration](https://github.com/ryoppippi/dotfiles/tree/main/nix/modules/darwin/programs/omniwm) | Real-world declarative setup example | It builds on DavSanchez's module, enables launchd, and merges a tracked settings template while preserving GUI-managed, machine-specific monitor settings. |
-
-Install the fast-tracking DoomHammer package directly:
+Install the package directly:
 
 ```bash
-nix profile install github:DoomHammer/nur-packages#omniwm
+nix profile install nixpkgs#omniwm
 ```
 
-Existing NUR configurations can use `nur.repos.doomhammer.omniwm`.
+With nix-darwin or Home Manager, add `pkgs.omniwm` to `environment.systemPackages` or `home.packages`.
 
-Install the signature-preserving DavSanchez package directly:
+For a declarative setup, enable the Home Manager module. It installs the package, runs OmniWM as a launchd
+agent, and writes `~/.config/omniwm/settings.toml` from an attribute set or a tracked TOML file:
 
-```bash
-nix profile install github:DavSanchez/nix-dotfiles#omniwm
+```nix
+programs.omniwm = {
+  enable = true;
+  settings = ./omniwm-settings.toml;
+};
 ```
 
-For a declarative setup, use DavSanchez's exported
-[`homeModules.omniwm`](https://github.com/DavSanchez/nix-dotfiles/blob/master/modules/home/omniwm.nix)
-and `overlays.additions`. After either installation, complete the macOS setup in steps 3-6 below.
+Treat the declared TOML file or attribute set as authoritative: edit it and run Home Manager switch to apply
+changes. OmniWM preserves settings symlinks, so settings backed by a read-only Nix-store file cannot be saved
+from the GUI. Set `programs.omniwm.launchd.enable = false` if you prefer to start and quit OmniWM manually
+instead of having Home Manager manage its launchd agent.
+
+After either installation, complete the macOS setup in steps 3-6 below.
 
 ### GitHub Releases
 
@@ -541,12 +577,14 @@ OmniWM checks for updates by default.
 
 ## Documentation
 
-The documentation hub lives in [`docs/index.md`](docs/index.md).
+The canonical documentation hub lives at [omniwm.app](https://omniwm.app).
 
-- [Documentation Home](docs/index.md)
-- [Architecture Guide](docs/ARCHITECTURE.md)
-- [IPC & CLI Reference](docs/IPC-CLI.md)
-- [Contribution Docs](docs/CONTRIBUTING.md)
+- [Documentation Home](https://omniwm.app/guides/quick-start/)
+- [Layout Modes](https://omniwm.app/guides/layouts/)
+- [Keyboard Shortcuts](https://omniwm.app/guides/keyboard-shortcuts/)
+- [Architecture Guide](https://omniwm.app/developers/architecture/)
+- [IPC & CLI Reference](https://omniwm.app/reference/cli/overview/)
+- [Contribution Docs](https://omniwm.app/developers/contributing/)
 - [Canonical Contributing Guide](CONTRIBUTING.md)
 
 ## IPC and CLI
@@ -557,7 +595,7 @@ IPC is disabled by default. Enable `Enable IPC` from the menu bar before using t
 
 Diagnostics can be scripted with `omniwmctl capture start trace`, `omniwmctl capture start performance`, `omniwmctl capture stop`, and `omniwmctl capture status`.
 
-For setup, installation options, commands, queries, rules, subscriptions, and security details, see [docs/IPC-CLI.md](docs/IPC-CLI.md).
+For setup, installation options, commands, queries, rules, subscriptions, and security details, see the [IPC & CLI Reference](https://omniwm.app/reference/cli/overview/).
 
 ## Quick Start
 
@@ -587,6 +625,10 @@ OmniWM uses two display maps for different jobs:
 
 The setup assistant opens automatically when OmniWM first sees multiple displays. To review or redo it later, choose **Run Monitor Setup…** in **Settings > Monitors**. The assistant's **Show Numbers on Screens** action helps match each physical display to its tile. Routing, workspace-home, and Mouse Warp changes remain drafts until you finish the assistant.
 
+Custom arrangements are remembered for each set of connected displays, so home and work can keep different positions for the same laptop display. Reconnecting a saved set restores its arrangement automatically. If there is no exact match, OmniWM inherits the smallest saved arrangement containing every connected display; an uncovered set or an invalid grid follows macOS. Editing, resetting, or finishing setup saves only the connected set, leaving any larger arrangement unchanged. Simply connecting displays or opening Settings does not save an arrangement. Workspace assignments and other per-monitor settings remain separate.
+
+**Move Window Across Monitor at Edge** sends a window beyond a workspace edge to the adjacent routed display and always follows it. Dedicated monitor-move actions work independently of this setting and use **Follow Window to Monitor**, which also controls focus after ordinary window or column transfers to another workspace.
+
 ### Layout Modes
 
 OmniWM offers two layout engines that you can switch between per workspace:
@@ -614,6 +656,8 @@ Settings hides advanced actions from the shortcut list by default. Turn on `Incl
 |--------|------------------|--------|
 | Switch to Workspace 1-9 | `Option + 1-9` | `Shared` |
 | Move Window to Workspace 1-9 | `Option + Shift + 1-9` | `Shared` |
+| Switch to Workspace Slot 1-9 (position on the current monitor) | `Unassigned` | `Shared` |
+| Move to Workspace Slot 1-9 (position on the current monitor) | `Unassigned` | `Shared` |
 | Switch to Last Active Workspace (Back and Forth) | `Control + Option + Tab` | `Shared` |
 | Switch to Next Workspace | `Unassigned` | `Shared` |
 | Switch to Previous Workspace (Sequential) | `Unassigned` | `Shared` |
@@ -640,6 +684,7 @@ Settings hides advanced actions from the shortcut list by default. Turn on `Incl
 | Focus Window 1-9 in Column | `Unassigned` | `Niri` |
 | Toggle Command Palette | `Control + Option + Space` | `Shared` |
 | Open Menu Anywhere | `Control + Option + M` | `Shared` |
+| Close Focused Window | `Unassigned` | `Shared` |
 | Toggle Workspace Bar | `Unassigned` | `Shared` |
 | Toggle Hidden Icons Bar | `Unassigned` | `Shared` |
 | Toggle Quake Terminal | `` Option + ` `` | `Shared` |
@@ -764,14 +809,19 @@ Stack uses the dwm master-and-stack arrangement. The newest tiled window becomes
 
 #### Quake Terminal
 
-A true quake/sticky terminal (powered by Ghostty's libghostty) that slides in from the screen edge and:
+A true quake/sticky terminal powered by Ghostty's libghostty. The default Center position fades it in place; Top, Bottom, Left, and Right slide it in from that screen edge.
+
 - Toggle it from the global shortcut shown in `Keyboard Shortcuts`
 - Supports multiple tabs and splits within tabs
 - Tab and pane shortcuts are listed in **Quake Terminal (Inside Terminal)**
-- Mouse resize by dragging edges; `Option + drag` to move (remembers size/position per monitor)
-- Configure position (top/bottom/left/right/center), size, opacity, and background effect in Settings
+- Mouse resize by dragging edges; `Option + drag` to move
+- Configure position, width and height as percentages of the monitor's available screen area, opacity, and background effect in Settings
 - Choose Standard Blur with an adjustable radius or native Regular Glass/Clear Glass; switching effects preserves the saved Standard Blur radius
 - Auto-hides on focus loss (optional)
+
+OmniWM remembers one custom size and position. It reuses that frame when it fits the selected monitor; otherwise it uses the configured position and percentages. **Reset to Default Position** appears in Settings once a custom frame is in use.
+
+Quake Terminal loads Ghostty's normal configuration files and their included files, so font, theme, and other terminal preferences can be shared. OmniWM applies its Quake background opacity and effect afterward; configure those in **Settings → Quake Terminal**.
 
 #### Command Palette
 
@@ -779,18 +829,20 @@ Quickly search windows, app menus, or clipboard history from one shared palette:
 - Open it from the global shortcut shown in `Keyboard Shortcuts`
 - Use `Tab` / `Shift + Tab` to cycle forward or backward through the available modes
 - Use `Cmd + 1` for `Windows`, `Cmd + 2` for `Menu`, and `Cmd + 3` for `Clipboard`
-- Type to fuzzy-search by window title, app name, menu item, or clipboard content
+- Type to search by substring; window-title matches rank first, followed by app-name and workspace-name matches
 - Menu results always show keyboard shortcuts when available
 - `Up` / `Down` move the selection
 - `Enter` activates the selected result
 - Windows from macOS-hidden apps remain searchable with a Hidden badge; selecting one unhides its app and focuses that exact window
-- `Shift + Enter` summons the selected window to the right when available
+- In Windows mode, `Shift + Enter` summons the selected window to the right when available
+- In Clipboard mode, `Enter` copies the selected entry and pastes it into the previous app when that target is still available; `Shift + Enter` copies without pasting
 - `Escape` dismisses the palette
+
+Clipboard history starts disabled. Open Clipboard mode (`Cmd + 3`) and click **Enable**, or set `clipboard.historyEnabled = true` in `settings.toml`. History retains supported text, rich text, HTML, images, and file references within the configured limits; items marked concealed, transient, or autogenerated, including recognized password-manager markers, are skipped. Each row has Copy and Delete actions, and the trash button clears the history. See the [command palette guide](https://omniwm.app/features/command-palette/#clipboard-history) for storage details.
 
 #### Menu Anywhere
 
-Access any application's menu from your keyboard:
-- Shows the native menu at the cursor from a global shortcut
+Open the frontmost app's menus at your cursor with a global shortcut. Menu Anywhere builds a native floating menu from the menus, submenus, and shortcuts the app exposes through Accessibility.
 
 #### Overview Mode
 
@@ -836,7 +888,7 @@ Workspace-bar icon overrides can also be configured in `settings.toml`. Quote bu
 #### Hidden Bar
 
 Conceal selected menu-bar icons and reach them from a panel:
-- Concealment requires macOS 27 or later; the rest of OmniWM continues to support macOS 26
+- Concealment requires macOS 27 or later; core window management supports macOS 26
 - Pick the apps to hide in `Settings > Hidden Bar`
 - Right-click (or Option-click) the OmniWM menu bar icon to open the Hidden Icons Bar; click an icon to reveal and use it
 - Revealed icons re-hide automatically after a configurable interval
@@ -846,7 +898,7 @@ Conceal selected menu-bar icons and reach them from a panel:
 
 - **Workspaces** - Create named workspaces in Settings to organize by project or context (You can use emojis 🥳)
 - **App Rules** - Exclude problematic apps from tiling or assign them to specific workspaces
-- **Mouse** - On the Niri desktop, hold the configured mouse-move modifier and drag to swap tiled windows; add `Shift` to insert into a column. The modifier defaults to `Option` and can be changed or disabled in **Settings → Mouse & Trackpad**. In Overview, `Option + drag` targets a workspace, window position, or Niri column gap
+- **Mouse** - Hold the configured mouse-move modifier and drag to swap tiled windows. Niri swaps individual windows; add `Shift` to insert into a column. Dwindle swaps whole tiles, including their tab groups. The modifier defaults to `Option` and can be changed or disabled in **Settings → Mouse & Trackpad**. In Overview, `Option + drag` targets a workspace, window position, or Niri column gap
 - **Mouse Resize** - Hold the configured right-mouse resize modifier (`Option` by default) and right-drag a tiled window to resize it in either layout
 - **Scroll Gestures (Mouse)** - Hold `Option + Shift + Mouse Scroll Wheel` (default, configurable) to scroll along the active Niri primary axis: left/right in horizontal orientation or up/down in vertical orientation
 - **Trackpad Gestures** - Use 2/3/4-finger gestures (configurable) along the active Niri primary axis; direction can be inverted (local hardware validation is limited)
@@ -863,6 +915,10 @@ that draw their own window chrome may ignore it. Affected apps must be fully qui
 applies.
 
 OmniWM stores its editable config at `${XDG_CONFIG_HOME:-$HOME/.config}/omniwm/settings.toml`; that file is the canonical settings source and is live-reloaded when saved from an editor.
+
+`XDG_CONFIG_HOME` and `XDG_STATE_HOME` are honored only when set to absolute paths; otherwise OmniWM uses `~/.config` and `~/.local/state`, respectively.
+
+Most configuration is also editable in Settings. **Start at Login** is managed by macOS, and **System-wide Window Corners** changes a macOS preference; neither is stored in `settings.toml`. Clipboard retention limits and scratchpad labels are edited in TOML.
 
 - **Reveal Settings File** and **Edit Settings File** open the canonical TOML file and recreate it from the running settings if it was deleted.
 - `updateChecksEnabled` is part of the persisted settings model, so it round-trips through `settings.toml`.
@@ -930,26 +986,11 @@ initialContainerPrimarySpan = 0.5
 
 ## Building from Source
 
-Requirements:
-- SwiftPM with Swift 6.4+
-- macOS 26.0+
-- A complete GhosttyKit xcframework at `Frameworks/GhosttyKit.xcframework`. Download the latest
-  `GhosttyKit.xcframework-v<version>.zip` asset from [Releases](https://github.com/BarutSRB/OmniWM/releases) and extract
-  it into `Frameworks/`, or replace the complete bundle with one you build from Ghostty.
-- The build preflight verifies the internal arm64 archive at the path pinned in `Scripts/build-metadata.env` (currently
-  `Frameworks/GhosttyKit.xcframework/macos-arm64/libghostty-internal.a`) is arm64-only and matches the pinned SHA-256.
-  If you rebuild GhosttyKit, replace the complete xcframework and update the metadata pin.
-
-Use the bundled Debug launch for day-to-day development:
-
-```bash
-make run
-```
-
-`make run` builds, packages, development-signs, and opens `dist/OmniWM.app` through LaunchServices. This is the canonical development launch because it gives OmniWM its normal app identity. OmniWM uses its native status bar item while Hidden Bar concealment is inactive. While concealment is active, it uses a separate fallback icon beside a visible workspace bar, or near the display's top center when no workspace bar is visible, because macOS can conceal the app-owned status item with the other restricted items. This behavior applies to both bundled and raw `swift run OmniWM` launches and is not specific to Debug builds.
+Follow the [contributor quick start](CONTRIBUTING.md#quick-start) for Xcode requirements, automatic dependency setup, and a separate **OmniWM Dev** app with independent settings. The guide covers rebuilding, switching back to your normal app, and verifying a pull request.
 
 ## Community Integrations
 
+- **[omacosy](https://github.com/paulsp94/omacosy)** is an Omarchy-inspired macOS desktop setup that supports OmniWM as a tiling window manager, with a custom status bar and coordinated desktop themes.
 - **[OmniWM Computer Use](https://github.com/nick-s5/omniwm-computer-use)** is a community-maintained Codex skill for focus-safe Computer Use, browser automation, and app testing through `omniwmctl` across OmniWM workspaces and displays.
 - **[OmniCast](https://github.com/imprisonedmind/omni-cast)** is a community-maintained Raycast extension for controlling OmniWM with plain-English search and commands through `omniwmctl`.
 
@@ -957,6 +998,10 @@ make run
 
 - **[Nehir](https://github.com/apphane-dev/nehir)** is an endorsed OmniWM fork focused on a narrower, more opinionated Niri-style scrolling-column workflow. It may be friendlier for beginners who want guided defaults and a smaller feature surface, while OmniWM remains the broader upstream project with multiple layout modes and the full feature set.
 - **[choru-k/OmniWM](https://github.com/choru-k/OmniWM)** is an interesting personal OmniWM fork experimenting with opt-in workflow layers on top of upstream OmniWM, including zone anchors for the Niri strip, a configurable F13-F20 leader-key chord menu, tabbed-column keyboard cycling, and trackpad-friendly modifier resizing. It is best read as a power-user workflow branch rather than a replacement for the main OmniWM release.
+
+## Community
+
+Questions, setup help, and config sharing happen on the [OmniWM Discord](https://discord.gg/NFrJKNmmrT). Confirmed bugs still belong on GitHub — see [Reporting Bugs](#reporting-bugs). Community integrations and related forks are listed above and on the [Community & Support](https://omniwm.app/help/community/) page.
 
 ## Support
 
@@ -977,14 +1022,16 @@ Issues and pull requests are welcome on [GitHub](https://github.com/BarutSRB/Omn
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) for the actual project guidelines, expectations, and preferred direction.
 
-For deeper technical context, the docs pages that back the documentation site are here:
+For deeper technical context, edit the source pages used by the documentation site:
 
-- [Architecture Guide](docs/ARCHITECTURE.md)
-- [IPC & CLI Reference](docs/IPC-CLI.md)
-- [Contribution Docs](docs/CONTRIBUTING.md)
+- [Architecture Guide](website/src/content/docs/developers/architecture.md)
+- [IPC & CLI Reference](website/src/content/docs/reference/cli/overview.md)
+- [Contribution Docs](website/src/content/docs/developers/contributing.md)
+
+The similarly named files under `docs/` are compatibility stubs that direct old links to `omniwm.app`.
 
 ## License
 
 OmniWM is licensed under the [GNU General Public License v2.0-only](LICENSE). Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM.
 
-Every source file carries an SPDX license header. Forks and redistributions must retain these notices and the `LICENSE` file, and remain GPL-2.0 with source available.
+Every source file carries an SPDX license header. Forks and redistributions must retain these notices and the `LICENSE` file, and remain GPL-2.0-only with source available.

@@ -51,6 +51,13 @@ extension WindowServerInfo {
     }
 }
 
+enum ActivationCallOrigin: String {
+    case appTerminationProbe
+    case external
+    case probe
+    case retry
+}
+
 enum ActivationRequestDisposition {
     case matchesActiveRequest(ManagedFocusRequest)
     case conflictsWithPendingRequest(ManagedFocusRequest)
@@ -194,7 +201,7 @@ enum ManagedWindowIdentityRebindResult {
     }
 }
 
-struct FocusedAdmissionRetryExecution: Equatable, Sendable {
+struct AdmissionRetryExecution: Equatable, Sendable {
     let windowId: UInt32
     let generation: UInt64
     let executionOwner: UInt64
@@ -214,18 +221,30 @@ struct AdmissionRetryState {
     var attempt: Int
     var generation: UInt64
     var trigger: AdmissionRetryTrigger
-    var focusedAdmissionContinuation: FocusedAdmissionRetryContinuation? = nil
+    var identityRebindSource: ManagedWindowIdentityRebindSource?
+    var focusedAdmissionContinuation: FocusedAdmissionRetryContinuation?
     var exhausted: Bool
     var executionPhase: AdmissionRetryExecutionPhase = .waiting
     var identityRebindTargetDestroyed = false
     var preparedSubscriptionRetainCount = 0
-    var focusedAdmissionReplayExecutionOwner: UInt64? = nil
+    var focusedAdmissionReplayExecutionOwner: UInt64?
     var task: Task<Void, Never>?
 }
 
 enum AdmissionRetryExecutionPhase: Equatable {
     case waiting
+    case queued
     case running(UInt64)
+}
+
+struct ManagedReplacementFocusKey: Hashable, Equatable {
+    let pid: pid_t
+    let workspaceId: WorkspaceDescriptor.ID
+}
+
+struct ManagedWindowIdentityRebindSource {
+    let handle: WindowHandle
+    let requestOrder: UInt64
 }
 
 struct AdmissionRetrySchedule {
@@ -233,6 +252,7 @@ struct AdmissionRetrySchedule {
     let axRef: AXWindowRef?
     let reason: WindowAdmissionPendingReason
     let trigger: AdmissionRetryTrigger
+    var identityRebindSource: ManagedWindowIdentityRebindSource?
     let focusedAdmissionContinuation: FocusedAdmissionRetryContinuation?
     let preparedSubscriptionRetainCount: Int
 }
@@ -347,5 +367,31 @@ struct WindowIdentityAliasHistory {
 
     var isEmpty: Bool {
         current == nil && previous == nil
+    }
+}
+
+extension PendingFocusedManagedActivation {
+    init(facts: ActivationFacts, requestDisposition: ActivationRequestDisposition, appFullscreen: Bool) {
+        self.init(
+            source: facts.source,
+            origin: facts.origin,
+            observationGeneration: facts.observationGeneration,
+            appFullscreen: appFullscreen,
+            request: .init(requestDisposition),
+            callbackGeneration: facts.callbackGeneration
+        )
+    }
+}
+
+extension AXEventHandler {
+    struct WindowCloseFocusRecoveryContext {
+        let workspaceId: WorkspaceDescriptor.ID
+        let closedToken: WindowToken
+        let expiresAt: Date
+    }
+
+    struct RecentMouseFocusIntent {
+        let token: WindowToken
+        let expiresAt: Date
     }
 }

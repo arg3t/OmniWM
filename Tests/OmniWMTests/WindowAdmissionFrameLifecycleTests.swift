@@ -20,10 +20,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
 
         let firstRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: false,
                 terminalObserver: { observerResults.append($0) }
             ).request
@@ -131,10 +128,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertFalse(ledger.hasPendingFrameWrite(for: windowId))
 
         let dedupedDecision = ledger.prepareFrameApplication(
-            pid: pid,
-            windowId: windowId,
-            expectedWindow: window,
-            frame: target,
+            .init(pid: pid, window: window, frame: target),
             isRetry: false,
             terminalObserver: nil
         )
@@ -163,6 +157,98 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertEqual(ledger.lastAppliedFrame(for: window.windowId), observed)
     }
 
+    func testStableSizeGrowthEmitsConstraintWithoutChangingConvergenceOutcome() throws {
+        let pid: pid_t = 467_350
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_450)
+        for (targetWidth, observedWidth, acceptsConvergence) in [(834.0, 1010.0, false), (930.0, 938.0, true)] {
+            let ledger = AXFrameApplicationLedger()
+            let target = CGRect(x: 17, y: 17, width: targetWidth, height: 1376)
+            let observed = CGRect(x: 17, y: 17, width: observedWidth, height: 1376)
+
+            let settlement = try settleSizeConvergence(
+                ledger,
+                pid: pid,
+                window: window,
+                target: target,
+                observed: observed
+            )
+
+            XCTAssertEqual(settlement.outcome.stableSizeClamps.count, 1)
+            let clamp = try XCTUnwrap(settlement.outcome.stableSizeClamps.first)
+            XCTAssertEqual(clamp.pid, pid)
+            XCTAssertTrue(sameAXWindowIdentity(clamp.expectedWindow, window))
+            XCTAssertEqual(clamp.targetFrame, target)
+            XCTAssertEqual(clamp.writeResult.observedFrame, observed)
+            XCTAssertEqual(clamp.writeResult.components, .all)
+            XCTAssertEqual(clamp.writeResult.failureReason, .verificationMismatch)
+            XCTAssertTrue(settlement.outcome.retries.isEmpty)
+            XCTAssertEqual(settlement.acceptedResults.count, acceptsConvergence ? 1 : 0)
+            XCTAssertEqual(settlement.outcome.terminalRefusals.count, acceptsConvergence ? 0 : 1)
+            XCTAssertEqual(settlement.outcome.terminalFailures.count, acceptsConvergence ? 0 : 1)
+            XCTAssertEqual(ledger.lastAppliedFrame(for: window.windowId), acceptsConvergence ? observed : nil)
+            XCTAssertTrue(ledger.handleFrameApplyResults([clamp]).stableSizeClamps.isEmpty)
+        }
+    }
+
+    func testStableSizeClampRejectsShrinkingAxes() throws {
+        let pid: pid_t = 467_351
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_451)
+        let target = CGRect(x: 20, y: 30, width: 640, height: 480)
+        for observed in [
+            CGRect(x: 20, y: 30, width: 632, height: 480),
+            CGRect(x: 20, y: 38, width: 648, height: 472)
+        ] {
+            let settlement = try settleSizeConvergence(
+                AXFrameApplicationLedger(),
+                pid: pid,
+                window: window,
+                target: target,
+                observed: observed
+            )
+
+            XCTAssertTrue(settlement.outcome.stableSizeClamps.isEmpty)
+            XCTAssertEqual(settlement.acceptedResults.map(\.confirmedFrame), [observed])
+            XCTAssertTrue(settlement.outcome.terminalRefusals.isEmpty)
+        }
+    }
+
+    func testStableSizeClampRequiresFullFrameWrites() throws {
+        let pid: pid_t = 467_352
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_452)
+        let target = CGRect(x: 17, y: 17, width: 834, height: 1376)
+        let observed = CGRect(x: 17, y: 17, width: 1010, height: 1376)
+        for components in [AXFrameComponents.position, .size] {
+            let ledger = AXFrameApplicationLedger()
+            for isRetry in [false, true] {
+                let request = try XCTUnwrap(ledger.prepareFrameApplication(
+                    .init(pid: pid, window: window, frame: target, components: components),
+                    isRetry: isRetry,
+                    terminalObserver: nil
+                ).request)
+                let outcome = ledger.handleFrameApplyResults([
+                    AXFrameApplyResult(
+                        requestId: request.requestId,
+                        pid: pid,
+                        windowId: window.windowId,
+                        expectedWindow: window,
+                        targetFrame: target,
+                        currentFrameHint: request.currentFrameHint,
+                        writeResult: AXFrameWriteResult(
+                            observedFrame: observed,
+                            writeOrder: .sizeThenPosition,
+                            sizeError: .success,
+                            positionError: .success,
+                            failureReason: .verificationMismatch,
+                            components: components
+                        )
+                    )
+                ])
+                XCTAssertTrue(outcome.stableSizeClamps.isEmpty)
+                if components == .position { break }
+            }
+        }
+    }
+
     func testAcceptedSizeConvergenceSuppressesOnlyItsExactTarget() throws {
         let ledger = AXFrameApplicationLedger()
         let pid: pid_t = 467_306
@@ -182,20 +268,14 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
 
         XCTAssertNil(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: false,
                 terminalObserver: nil
             ).request
         )
 
         let changedDecision = ledger.prepareFrameApplication(
-            pid: pid,
-            windowId: windowId,
-            expectedWindow: window,
-            frame: changedTarget,
+            .init(pid: pid, window: window, frame: changedTarget),
             isRetry: false,
             terminalObserver: nil
         )
@@ -203,6 +283,37 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertEqual(changedRequest.frame, changedTarget)
         XCTAssertEqual(changedRequest.currentFrameHint, observed)
         XCTAssertEqual(ledger.pendingFrameWrite(for: windowId), changedTarget)
+    }
+
+    func testSupersededRetryCannotEmitStableSizeClamp() throws {
+        let ledger = AXFrameApplicationLedger()
+        let pid: pid_t = 467_353
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_453)
+        let target = CGRect(x: 17, y: 17, width: 834, height: 1376)
+        let observed = CGRect(x: 17, y: 17, width: 1010, height: 1376)
+        let firstRequest = try XCTUnwrap(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: target)
+        )
+        let firstOutcome = ledger.handleFrameApplyResults([
+            WindowAdmissionTestSupport.verificationMismatchFrameResult(request: firstRequest, observed: observed)
+        ])
+        XCTAssertTrue(firstOutcome.stableSizeClamps.isEmpty)
+        let retryRequest = try XCTUnwrap(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: target, isRetry: true)
+        )
+        let changedTarget = target.offsetBy(dx: 20, dy: 0)
+        _ = try XCTUnwrap(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: changedTarget)
+        )
+
+        let staleOutcome = ledger.handleFrameApplyResults([
+            WindowAdmissionTestSupport.verificationMismatchFrameResult(request: retryRequest, observed: observed)
+        ])
+
+        XCTAssertTrue(staleOutcome.stableSizeClamps.isEmpty)
+        XCTAssertTrue(staleOutcome.terminalRefusals.isEmpty)
+        XCTAssertTrue(staleOutcome.terminalFailures.isEmpty)
+        XCTAssertEqual(ledger.pendingFrameWrite(for: window.windowId), changedTarget)
     }
 
     func testAcceptedSizeConvergenceIsInvalidatedByExternalFrameDrift() throws {
@@ -236,10 +347,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         )
         XCTAssertNotNil(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: false,
                 terminalObserver: nil
             ).request
@@ -381,10 +489,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         var terminalResults: [AXFrameApplyResult] = []
 
         let observerDecision = ledger.prepareFrameApplication(
-            pid: pid,
-            windowId: window.windowId,
-            expectedWindow: window,
-            frame: target,
+            .init(pid: pid, window: window, frame: target),
             isRetry: false,
             terminalObserver: { terminalResults.append($0) }
         )
@@ -421,7 +526,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertTrue(observerResults.isEmpty)
         XCTAssertTrue(genericFailures.isEmpty)
 
-        manager.cancelPendingFrameJobs([(pid: pid, windowId: window.windowId)])
+        manager.cancelPendingFrameJobs([(pid: pid, windowId: window.windowId)], reason: "test")
         await Task.yield()
 
         let observerResult = try XCTUnwrap(observerResults.first)
@@ -489,10 +594,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         )
         XCTAssertNotNil(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: target,
+                .init(pid: pid, window: window, frame: target),
                 isRetry: false,
                 terminalObserver: nil
             ).request
@@ -518,6 +620,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         )
 
         XCTAssertTrue(settlement.outcome.terminalRefusals.isEmpty)
+        XCTAssertTrue(settlement.outcome.stableSizeClamps.isEmpty)
         XCTAssertEqual(settlement.acceptedResults.map(\.confirmedFrame), [observed])
         XCTAssertEqual(ledger.lastAppliedFrame(for: window.windowId), observed)
     }
@@ -562,6 +665,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         )
 
         XCTAssertTrue(acceptedResults.isEmpty)
+        XCTAssertTrue(retryOutcome.stableSizeClamps.isEmpty)
         XCTAssertEqual(
             retryOutcome.terminalRefusals,
             [
@@ -656,6 +760,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(positionOutcome.terminalRefusals.count, 1)
+        XCTAssertTrue(positionOutcome.stableSizeClamps.isEmpty)
         XCTAssertNil(positionLedger.lastAppliedFrame(for: positionWindow.windowId))
         XCTAssertEqual(
             positionLedger.recentFrameWriteFailure(for: positionWindow.windowId),
@@ -679,6 +784,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(oppositeAnchorOutcome.terminalRefusals.count, 1)
+        XCTAssertTrue(oppositeAnchorOutcome.stableSizeClamps.isEmpty)
         XCTAssertNil(oppositeAnchorLedger.lastAppliedFrame(for: oppositeAnchorWindow.windowId))
         XCTAssertEqual(
             oppositeAnchorLedger.recentFrameWriteFailure(for: oppositeAnchorWindow.windowId),
@@ -702,6 +808,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(verticalAnchorOutcome.terminalRefusals.count, 1)
+        XCTAssertTrue(verticalAnchorOutcome.stableSizeClamps.isEmpty)
         XCTAssertNil(verticalAnchorLedger.lastAppliedFrame(for: verticalAnchorWindow.windowId))
         XCTAssertEqual(
             verticalAnchorLedger.recentFrameWriteFailure(for: verticalAnchorWindow.windowId),
@@ -725,6 +832,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(oversizedOutcome.terminalRefusals.count, 1)
+        XCTAssertEqual(oversizedOutcome.stableSizeClamps.count, 1)
         XCTAssertNil(oversizedLedger.lastAppliedFrame(for: oversizedWindow.windowId))
         XCTAssertEqual(
             oversizedLedger.recentFrameWriteFailure(for: oversizedWindow.windowId),
@@ -750,6 +858,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(setterOutcome.terminalRefusals.count, 1)
+        XCTAssertTrue(setterOutcome.stableSizeClamps.isEmpty)
         XCTAssertNil(setterLedger.lastAppliedFrame(for: setterWindow.windowId))
         XCTAssertEqual(setterLedger.recentFrameWriteFailure(for: setterWindow.windowId), setterFailure)
 
@@ -774,6 +883,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
             )
         }
         XCTAssertEqual(positionSetterOutcome.terminalRefusals.count, 1)
+        XCTAssertTrue(positionSetterOutcome.stableSizeClamps.isEmpty)
         XCTAssertNil(positionSetterLedger.lastAppliedFrame(for: positionSetterWindow.windowId))
         XCTAssertEqual(
             positionSetterLedger.recentFrameWriteFailure(for: positionSetterWindow.windowId),
@@ -834,6 +944,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertTrue(forgedOutcome.retries.isEmpty)
         XCTAssertTrue(forgedOutcome.terminalRefusals.isEmpty)
         XCTAssertTrue(forgedOutcome.terminalFailures.isEmpty)
+        XCTAssertTrue(forgedOutcome.stableSizeClamps.isEmpty)
         XCTAssertTrue(acceptedResults.isEmpty)
         XCTAssertTrue(ledger.hasPendingFrameWrite(for: windowId))
         XCTAssertNil(ledger.lastAppliedFrame(for: windowId))
@@ -896,6 +1007,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         )
 
         XCTAssertTrue(retryOutcome.terminalRefusals.isEmpty)
+        XCTAssertEqual(retryOutcome.stableSizeClamps.map(\.windowId), [newWindowId])
         XCTAssertEqual(acceptedResults.map(\.windowId), [newWindowId])
         XCTAssertEqual(acceptedResults.map(\.confirmedFrame), [observed])
         XCTAssertEqual(ledger.lastAppliedFrame(for: newWindowId), observed)
@@ -910,20 +1022,14 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId)
         let firstRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: firstTarget,
+                .init(pid: pid, window: window, frame: firstTarget),
                 isRetry: false,
                 terminalObserver: nil
             ).request
         )
         let secondRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: window,
-                frame: secondTarget,
+                .init(pid: pid, window: window, frame: secondTarget),
                 isRetry: false,
                 terminalObserver: nil
             ).request
@@ -992,10 +1098,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         let newWindow = AXWindowRef(element: AXUIElementCreateApplication(pid + 1), windowId: windowId)
         let oldRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid,
-                windowId: windowId,
-                expectedWindow: oldWindow,
-                frame: target,
+                .init(pid: pid, window: oldWindow, frame: target),
                 isRetry: false,
                 terminalObserver: nil
             ).request
@@ -1003,10 +1106,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         _ = ledger.removeWindowState(windowId: windowId)
         let newRequest = try XCTUnwrap(
             ledger.prepareFrameApplication(
-                pid: pid + 1,
-                windowId: windowId,
-                expectedWindow: newWindow,
-                frame: target,
+                .init(pid: pid + 1, window: newWindow, frame: target),
                 isRetry: false,
                 terminalObserver: nil
             ).request
@@ -1253,6 +1353,288 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         XCTAssertFalse(controller.workspaceManager.nativeFocusOwner.isExternal)
     }
 
+    func testRememberedTerminalRefusalStopsReissuingTheSameTarget() throws {
+        let pid: pid_t = 467_331
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_431)
+        let target = CGRect(x: 100, y: 60, width: 900, height: 400)
+        let observed = CGRect(x: 100, y: 60, width: 900, height: 492)
+        let ledger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+
+        XCTAssertNil(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: target)
+        )
+        XCTAssertFalse(ledger.hasPendingFrameWrite(for: window.windowId))
+
+        var observerResults: [AXFrameApplyResult] = []
+        let declined = ledger.prepareFrameApplication(
+            .init(pid: pid, window: window, frame: target),
+            isRetry: false,
+            terminalObserver: { observerResults.append($0) }
+        )
+        XCTAssertNil(declined.request)
+        XCTAssertFalse(declined.shouldCancelPendingRetry)
+        XCTAssertEqual(declined.deliveries.count, 1)
+        for delivery in declined.deliveries {
+            delivery.deliver()
+        }
+        let refused = try XCTUnwrap(observerResults.first)
+        XCTAssertEqual(observerResults.count, 1)
+        XCTAssertEqual(refused.targetFrame, target)
+        XCTAssertEqual(refused.writeResult.failureReason, .verificationMismatch)
+        XCTAssertEqual(refused.writeResult.observedFrame, observed)
+        XCTAssertNil(refused.confirmedFrame)
+        XCTAssertFalse(ledger.hasPendingFrameWrite(for: window.windowId))
+    }
+
+    func testRememberedTerminalRefusalReleasesOnTargetChangeForceApplyAndInvalidation() throws {
+        let pid: pid_t = 467_332
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_432)
+        let target = CGRect(x: 100, y: 60, width: 900, height: 400)
+        let observed = CGRect(x: 100, y: 60, width: 900, height: 492)
+
+        let targetChangeLedger = try refusedTargetLedger(
+            pid: pid, window: window, target: target, observed: observed
+        )
+        let tallerTarget = CGRect(x: 100, y: 60, width: 900, height: 560)
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(
+                targetChangeLedger, pid: pid, window: window, frame: tallerTarget
+            )
+        )
+
+        let forceApplyLedger = try refusedTargetLedger(
+            pid: pid, window: window, target: target, observed: observed
+        )
+        forceApplyLedger.forceApplyNextFrame(for: window.windowId)
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(
+                forceApplyLedger, pid: pid, window: window, frame: target
+            )
+        )
+
+        let invalidationLedger = try refusedTargetLedger(
+            pid: pid, window: window, target: target, observed: observed
+        )
+        invalidationLedger.invalidateAppliedFrame(for: window.windowId)
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(
+                invalidationLedger, pid: pid, window: window, frame: target
+            )
+        )
+
+        let removalLedger = try refusedTargetLedger(
+            pid: pid, window: window, target: target, observed: observed
+        )
+        XCTAssertTrue(removalLedger.removeWindowState(windowId: window.windowId).isEmpty)
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(
+                removalLedger, pid: pid, window: window, frame: target
+            )
+        )
+    }
+
+    func testEnforcedSizePlacementAnchorsTheRefusedSizeToTheTargetTopLeft() throws {
+        let pid: pid_t = 467_333
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_433)
+        let target = CGRect(x: 2_409, y: 1_113, width: 1_257, height: 280)
+        let observed = CGRect(x: 2_409, y: 901, width: 1_257, height: 492)
+        let ledger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+
+        let scrolled = CGRect(x: 1_286, y: 1_113, width: 1_257, height: 280)
+        XCTAssertEqual(
+            ledger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled),
+            CGRect(x: 1_286, y: 901, width: 1_257, height: 492)
+        )
+        XCTAssertEqual(
+            ledger.enforcedSizePlacement(for: window.windowId, targetFrame: target),
+            observed
+        )
+        XCTAssertNil(
+            ledger.enforcedSizePlacement(
+                for: window.windowId,
+                targetFrame: CGRect(x: 1_286, y: 1_113, width: 1_257, height: 560)
+            )
+        )
+    }
+
+    func testPositionOnlyWriteKeepsTheTerminalSizeRefusalRemembered() throws {
+        let pid: pid_t = 467_334
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_434)
+        let target = CGRect(x: 2_409, y: 1_113, width: 1_257, height: 280)
+        let observed = CGRect(x: 2_409, y: 901, width: 1_257, height: 492)
+        let ledger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+
+        let scrolled = CGRect(x: 1_286, y: 1_113, width: 1_257, height: 280)
+        let placement = try XCTUnwrap(
+            ledger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled)
+        )
+        let positionRequest = try XCTUnwrap(
+            ledger.prepareFrameApplication(
+                .init(pid: pid, window: window, frame: placement, components: .position),
+                isRetry: false,
+                terminalObserver: nil
+            ).request
+        )
+        XCTAssertEqual(positionRequest.components, .position)
+        let outcome = ledger.handleFrameApplyResults([
+            AXFrameApplyResult(
+                requestId: positionRequest.requestId,
+                pid: pid,
+                windowId: window.windowId,
+                expectedWindow: window,
+                targetFrame: placement,
+                currentFrameHint: positionRequest.currentFrameHint,
+                writeResult: AXFrameWriteResult(
+                    observedFrame: placement,
+                    writeOrder: .sizeThenPosition,
+                    sizeError: .success,
+                    positionError: .success,
+                    failureReason: nil,
+                    components: .position
+                )
+            )
+        ])
+        XCTAssertTrue(outcome.terminalFailures.isEmpty)
+        XCTAssertEqual(ledger.lastAppliedFrame(for: window.windowId), placement)
+        XCTAssertEqual(
+            ledger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled),
+            placement
+        )
+
+        let tallerTarget = CGRect(x: 1_286, y: 1_113, width: 1_257, height: 560)
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: tallerTarget)
+        )
+        XCTAssertNil(ledger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled))
+    }
+
+    func testTerminalRefusalIsVisibleUntilCancellationClearsIt() throws {
+        let pid: pid_t = 467_341
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_441)
+        let target = CGRect(x: 2_409, y: 1_113, width: 1_257, height: 280)
+        let observed = CGRect(x: 2_409, y: 901, width: 1_257, height: 492)
+        let ledger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+
+        XCTAssertTrue(ledger.hasTerminalRefusal(for: window.windowId))
+        XCTAssertFalse(ledger.hasTerminalRefusal(for: window.windowId + 1))
+        _ = ledger.cancelFrameJob(pid: pid, windowId: window.windowId)
+        XCTAssertFalse(ledger.hasTerminalRefusal(for: window.windowId))
+    }
+
+    func testObservedFrameAtTheRefusedSizeReleasesTheRefusal() throws {
+        let pid: pid_t = 467_336
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_436)
+        let target = CGRect(x: 2_409, y: 1_113, width: 1_257, height: 280)
+        let observed = CGRect(x: 2_409, y: 901, width: 1_257, height: 492)
+        let scrolled = CGRect(x: 1_286, y: 1_113, width: 1_257, height: 280)
+
+        let releasedLedger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+        let placement = try XCTUnwrap(
+            releasedLedger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled)
+        )
+        let released = CGRect(x: placement.minX, y: placement.minY, width: target.width, height: target.height)
+        XCTAssertTrue(
+            try positionOnlyReadback(releasedLedger, pid: pid, window: window, placement: placement, observed: released)
+                .terminalFailures.isEmpty
+        )
+        XCTAssertNil(releasedLedger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled))
+        XCTAssertNotNil(
+            WindowAdmissionTestSupport.frameRequest(releasedLedger, pid: pid, window: window, frame: target)
+        )
+
+        let clampedLedger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+        XCTAssertTrue(
+            try positionOnlyReadback(clampedLedger, pid: pid, window: window, placement: placement, observed: placement)
+                .terminalFailures.isEmpty
+        )
+        XCTAssertEqual(clampedLedger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled), placement)
+        XCTAssertNil(WindowAdmissionTestSupport.frameRequest(clampedLedger, pid: pid, window: window, frame: target))
+
+        let otherIdentity = AXWindowRef(element: AXUIElementCreateApplication(pid + 1), windowId: window.windowId)
+        let identityLedger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+        XCTAssertTrue(
+            try positionOnlyReadback(
+                identityLedger, pid: pid, window: otherIdentity, placement: placement, observed: released
+            ).terminalFailures.isEmpty
+        )
+        XCTAssertEqual(identityLedger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled), placement)
+        XCTAssertNil(WindowAdmissionTestSupport.frameRequest(identityLedger, pid: pid, window: window, frame: target))
+    }
+
+    func testIdenticalRepeatFailureKeepsTheRefusalTerminalAcrossTheRetryChain() throws {
+        let pid: pid_t = 467_338
+        let window = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: 467_438)
+        let target = CGRect(x: 2_409, y: 1_113, width: 1_257, height: 280)
+        let observed = CGRect(x: 2_409, y: 901, width: 1_257, height: 492)
+        let ledger = try refusedTargetLedger(pid: pid, window: window, target: target, observed: observed)
+
+        let scrolled = CGRect(x: 1_286, y: 1_113, width: 1_257, height: 280)
+        let scrolledObserved = CGRect(x: 1_286, y: 901, width: 1_257, height: 492)
+        let request = try XCTUnwrap(
+            WindowAdmissionTestSupport.frameRequest(ledger, pid: pid, window: window, frame: scrolled)
+        )
+        let outcome = ledger.handleFrameApplyResults([
+            WindowAdmissionTestSupport.verificationMismatchFrameResult(
+                request: request,
+                observed: scrolledObserved
+            )
+        ])
+        XCTAssertEqual(outcome.retries.count, 1)
+        XCTAssertTrue(outcome.terminalRefusals.isEmpty)
+        XCTAssertEqual(
+            ledger.enforcedSizePlacement(for: window.windowId, targetFrame: scrolled),
+            scrolledObserved
+        )
+    }
+
+    private func refusedTargetLedger(
+        pid: pid_t,
+        window: AXWindowRef,
+        target: CGRect,
+        observed: CGRect
+    ) throws -> AXFrameApplicationLedger {
+        let ledger = AXFrameApplicationLedger()
+        let outcome = try exhaustFrameFailure(ledger, pid: pid, window: window, target: target) {
+            WindowAdmissionTestSupport.verificationMismatchFrameResult(request: $0, observed: observed)
+        }
+        XCTAssertEqual(outcome.terminalRefusals.count, 1)
+        return ledger
+    }
+
+    private func positionOnlyReadback(
+        _ ledger: AXFrameApplicationLedger,
+        pid: pid_t,
+        window: AXWindowRef,
+        placement: CGRect,
+        observed: CGRect
+    ) throws -> AXFrameApplyOutcome {
+        let request = try XCTUnwrap(
+            ledger.prepareFrameApplication(
+                .init(pid: pid, window: window, frame: placement, components: .position),
+                isRetry: false,
+                terminalObserver: nil
+            ).request
+        )
+        return ledger.handleFrameApplyResults([
+            AXFrameApplyResult(
+                requestId: request.requestId,
+                pid: pid,
+                windowId: window.windowId,
+                expectedWindow: window,
+                targetFrame: placement,
+                currentFrameHint: request.currentFrameHint,
+                writeResult: AXFrameWriteResult(
+                    observedFrame: observed,
+                    writeOrder: .sizeThenPosition,
+                    sizeError: .success,
+                    positionError: .success,
+                    failureReason: nil,
+                    components: .position
+                )
+            )
+        ])
+    }
+
     private func settleSizeConvergence(
         _ ledger: AXFrameApplicationLedger,
         pid: pid_t,
@@ -1262,10 +1644,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         terminalObserver: AXFrameApplicationTerminalObserver? = nil
     ) throws -> (outcome: AXFrameApplyOutcome, acceptedResults: [AXFrameApplyResult]) {
         let firstDecision = ledger.prepareFrameApplication(
-            pid: pid,
-            windowId: window.windowId,
-            expectedWindow: window,
-            frame: target,
+            .init(pid: pid, window: window, frame: target),
             isRetry: false,
             terminalObserver: terminalObserver
         )
@@ -1288,6 +1667,7 @@ final class WindowAdmissionFrameLifecycleTests: XCTestCase {
         ])
         XCTAssertTrue(firstOutcome.deliveries.isEmpty)
         XCTAssertTrue(firstOutcome.terminalRefusals.isEmpty)
+        XCTAssertTrue(firstOutcome.stableSizeClamps.isEmpty)
 
         let retryRequest = try XCTUnwrap(
             WindowAdmissionTestSupport.frameRequest(

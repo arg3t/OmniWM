@@ -10,20 +10,16 @@ extension NiriLayoutEngine {
         windowToken: WindowToken,
         startLocation: CGPoint,
         isInsertMode: Bool = false,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
+        context: NiriInteractionContext,
+        state: inout ViewportState
     ) -> Bool {
         assertSanctionedMutation()
         guard interactiveMove == nil else { return false }
         guard interactiveResize == nil else { return false }
 
-        guard let windowNode = findNode(by: windowId, in: workspaceId) as? NiriWindow else { return false }
-        guard let column = findColumn(containing: windowNode, in: workspaceId) else { return false }
-        guard let colIdx = columnIndex(of: column, in: workspaceId) else { return false }
+        guard let windowNode = findNode(by: windowId, in: context.workspaceId) as? NiriWindow else { return false }
+        guard let column = findColumn(containing: windowNode, in: context.workspaceId) else { return false }
+        guard let colIdx = columnIndex(of: column, in: context.workspaceId) else { return false }
 
         if windowNode.isFullscreen {
             return false
@@ -32,36 +28,33 @@ extension NiriLayoutEngine {
         interactiveMove = InteractiveMove(
             windowId: windowId,
             windowToken: windowToken,
-            workspaceId: workspaceId,
+            workspaceId: context.workspaceId,
             startMouseLocation: startLocation,
             originalColumnIndex: colIdx,
             originalFrame: windowNode.renderedFrame ?? windowNode.frame ?? .zero,
             isInsertMode: isInsertMode,
-            orientation: orientation,
-            gaps: gaps,
+            orientation: context.orientation,
+            gaps: context.gaps,
             currentHoverTarget: nil
         )
 
-        let cols = columns(in: workspaceId)
+        let cols = columns(in: context.workspaceId)
         resolvePrimaryContainerSpans(
-            in: workspaceId,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
+            in: context.workspaceId,
+            workingFrame: context.workingFrame,
+            gaps: context.gaps,
+            orientation: context.orientation
         )
-        let settings = effectiveSettings(in: workspaceId)
+        let settings = effectiveSettings(in: context.workspaceId)
         state.transitionToColumn(
             colIdx,
             columns: cols,
-            gap: gaps,
-            workingArea: workingFrame,
-            orientation: orientation,
-            motion: motion,
+            context: context,
             animate: false,
             centerMode: settings.centerFocusedColumn,
             alwaysCenterSingleColumn: settings.alwaysCenterSingleColumn,
-            scale: displayScale(in: workspaceId),
-            viewFrame: monitorForWorkspace(workspaceId)?.frame
+            scale: displayScale(in: context.workspaceId),
+            viewFrame: monitorForWorkspace(context.workspaceId)?.frame
         )
 
         return true
@@ -111,6 +104,13 @@ extension NiriLayoutEngine {
             return false
         }
 
+        let context = NiriInteractionContext(
+            workspaceId: move.workspaceId,
+            motion: motion,
+            workingFrame: workingFrame,
+            gaps: gaps,
+            orientation: move.orientation
+        )
         switch target {
         case let .window(targetNodeId, _, position):
             switch position {
@@ -118,12 +118,8 @@ extension NiriLayoutEngine {
                 return swapWindowsByMove(
                     sourceWindowId: move.windowId,
                     targetWindowId: targetNodeId,
-                    in: move.workspaceId,
-                    motion: motion,
-                    state: &state,
-                    workingFrame: workingFrame,
-                    gaps: gaps,
-                    orientation: move.orientation
+                    context: context,
+                    state: &state
                 )
             case .before,
                  .after:
@@ -131,12 +127,8 @@ extension NiriLayoutEngine {
                     sourceWindowId: move.windowId,
                     targetWindowId: targetNodeId,
                     position: position,
-                    in: move.workspaceId,
-                    motion: motion,
-                    state: &state,
-                    workingFrame: workingFrame,
-                    gaps: gaps,
-                    orientation: move.orientation
+                    context: context,
+                    state: &state
                 )
             }
 
@@ -192,22 +184,17 @@ extension NiriLayoutEngine {
     func swapWindowsByMove(
         sourceWindowId: NodeId,
         targetWindowId: NodeId,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation,
-        fromColumnIndex: Int? = nil
+        context: NiriInteractionContext,
+        state: inout ViewportState
     ) -> Bool {
-        guard let sourceWindow = findNode(by: sourceWindowId, in: workspaceId) as? NiriWindow,
-              let targetWindow = findNode(by: targetWindowId, in: workspaceId) as? NiriWindow
+        guard let sourceWindow = findNode(by: sourceWindowId, in: context.workspaceId) as? NiriWindow,
+              let targetWindow = findNode(by: targetWindowId, in: context.workspaceId) as? NiriWindow
         else {
             return false
         }
 
-        guard let sourceColumn = findColumn(containing: sourceWindow, in: workspaceId),
-              let targetColumn = findColumn(containing: targetWindow, in: workspaceId)
+        guard let sourceColumn = findColumn(containing: sourceWindow, in: context.workspaceId),
+              let targetColumn = findColumn(containing: targetWindow, in: context.workspaceId)
         else {
             return false
         }
@@ -229,79 +216,78 @@ extension NiriLayoutEngine {
                 targetColumn,
                 adding: sourceWindow,
                 removing: targetWindow,
-                in: workspaceId,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
+                in: context.workspaceId,
+                geometry: context.sizingGeometry
             ), columnCanAcceptTransfer(
                 sourceColumn,
                 adding: targetWindow,
                 removing: sourceWindow,
-                in: workspaceId,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
+                in: context.workspaceId,
+                geometry: context.sizingGeometry
             ) else {
                 return false
             }
 
-            let sourceSize = sourceWindow.size
-            let sourceHeight = sourceWindow.height
-            let targetSize = targetWindow.size
-            let targetHeight = targetWindow.height
-
-            sourceWindow.detach()
-            targetWindow.detach()
-
-            sourceColumn.insertChild(targetWindow, at: sourceIdx)
-            targetColumn.insertChild(sourceWindow, at: targetIdx)
-
-            sourceWindow.size = targetSize
-            sourceWindow.height = targetHeight
-            targetWindow.size = sourceSize
-            targetWindow.height = sourceHeight
-
-            if sourceColumn.isTabbed {
-                sourceColumn.clampActiveTileIdx()
-            }
-            if targetColumn.isTabbed {
-                targetColumn.clampActiveTileIdx()
-            }
+            swapColumnMembers(
+                source: (sourceWindow, sourceColumn), target: (targetWindow, targetColumn),
+                indices: (sourceIdx, targetIdx)
+            )
         }
 
         ensureSelectionVisible(
             node: sourceWindow,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
+            context: context,
+            state: &state
         )
 
         return true
+    }
+
+    private func swapColumnMembers(
+        source: (window: NiriWindow, column: NiriContainer),
+        target: (window: NiriWindow, column: NiriContainer),
+        indices: (source: Int, target: Int)
+    ) {
+        let sourceSize = source.window.size
+        let sourceHeight = source.window.height
+        let targetSize = target.window.size
+        let targetHeight = target.window.height
+
+        source.window.detach()
+        target.window.detach()
+
+        source.column.insertChild(target.window, at: indices.source)
+        target.column.insertChild(source.window, at: indices.target)
+
+        source.window.size = targetSize
+        source.window.height = targetHeight
+        target.window.size = sourceSize
+        target.window.height = sourceHeight
+
+        if source.column.isTabbed {
+            source.column.clampActiveTileIdx()
+        }
+        if target.column.isTabbed {
+            target.column.clampActiveTileIdx()
+        }
     }
 
     func insertWindowByMove(
         sourceWindowId: NodeId,
         targetWindowId: NodeId,
         position: InsertPosition,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        workingFrame: CGRect,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
+        context: NiriInteractionContext,
+        state: inout ViewportState
     ) -> Bool {
         assertSanctionedMutation()
-        guard let sourceWindow = findNode(by: sourceWindowId, in: workspaceId) as? NiriWindow,
-              let targetWindow = findNode(by: targetWindowId, in: workspaceId) as? NiriWindow
+        guard let sourceWindow = findNode(by: sourceWindowId, in: context.workspaceId) as? NiriWindow,
+              let targetWindow = findNode(by: targetWindowId, in: context.workspaceId) as? NiriWindow
         else {
             return false
         }
 
-        guard let sourceColumn = findColumn(containing: sourceWindow, in: workspaceId),
-              let targetColumn = findColumn(containing: targetWindow, in: workspaceId)
+        guard let sourceColumn = findColumn(containing: sourceWindow, in: context.workspaceId),
+              let targetColumn = findColumn(containing: targetWindow, in: context.workspaceId)
         else {
             return false
         }
@@ -317,10 +303,8 @@ extension NiriLayoutEngine {
             guard columnCanAcceptTransfer(
                 targetColumn,
                 adding: sourceWindow,
-                in: workspaceId,
-                workingFrame: workingFrame,
-                gaps: gaps,
-                orientation: orientation
+                in: context.workspaceId,
+                geometry: context.sizingGeometry
             ) else {
                 return false
             }
@@ -341,7 +325,23 @@ extension NiriLayoutEngine {
         sourceWindow.size = 1.0
         sourceWindow.height = .default
 
-        if sourceColumnWillBeEmpty {
+        finishMoveColumns(sourceColumn, target: targetColumn, removeSource: sourceColumnWillBeEmpty)
+
+        ensureSelectionVisible(
+            node: sourceWindow,
+            context: context,
+            state: &state
+        )
+
+        return true
+    }
+
+    private func finishMoveColumns(
+        _ sourceColumn: NiriContainer,
+        target targetColumn: NiriContainer,
+        removeSource: Bool
+    ) {
+        if removeSource {
             sourceColumn.remove()
         }
 
@@ -351,18 +351,6 @@ extension NiriLayoutEngine {
         if targetColumn.isTabbed {
             targetColumn.clampActiveTileIdx()
         }
-
-        ensureSelectionVisible(
-            node: sourceWindow,
-            in: workspaceId,
-            motion: motion,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gaps,
-            orientation: orientation
-        )
-
-        return true
     }
 
     func insertionDropzoneFrame(
@@ -380,8 +368,7 @@ extension NiriLayoutEngine {
         }
 
         let windows = column.windowNodes
-        let n = windows.count
-        let postInsertionCount = n + 1
+        let postInsertionCount = windows.count + 1
         let firstFrame = windows.first?.renderedFrame ?? windows.first?.frame
         let lastFrame = windows.last?.renderedFrame ?? windows.last?.frame
         let totalGaps = CGFloat(postInsertionCount - 1) * gaps

@@ -11,7 +11,7 @@ sidebar:
 
 ```json
 {
-  "version": 14,
+  "version": 15,
   "id": "<uuid>",
   "kind": "<ping|version|command|capture|query|rule|workspace|window|subscribe>",
   "authorizationToken": "<token>",
@@ -115,7 +115,19 @@ sidebar:
 }
 ```
 
-Workspace requests use this flat wire shape. For `move-to-monitor`, `force` is optional while decoding; omitting it is equivalent to `false`.
+**Workspace rename:**
+```json
+{
+  "name": "rename",
+  "workspaceTarget": {
+    "kind": "raw-id",
+    "value": "3"
+  },
+  "displayName": "🚨 Alerts"
+}
+```
+
+Workspace requests use this flat wire shape. For `move-to-monitor`, `force` is optional while decoding; omitting it is equivalent to `false`. For `rename`, `displayName` is required; an empty string clears the label so the workspace shows its raw ID.
 
 **Window:**
 ```json
@@ -143,14 +155,14 @@ Workspace requests use this flat wire shape. For `move-to-monitor`, `force` is o
 
 ```json
 {
-  "version": 14,
+  "version": 15,
   "id": "<request-id>",
   "ok": true,
   "kind": "<ping|version|command|capture|query|rule|workspace|window|subscribe>",
   "status": "<success|executed|ignored|error|subscribed>",
   "code": null,
   "result": {
-    "kind": "<pong|version|capture|workspace-bar|active-workspace|focused-monitor|apps|focused-window|windows|workspaces|displays|rules|rule-actions|queries|commands|subscriptions|capabilities|subscribed>",
+    "kind": "<pong|version|capture|workspace-bar|active-workspace|focused-monitor|apps|metrics|focused-window|windows|workspaces|displays|rules|rule-actions|queries|commands|subscriptions|capabilities|subscribed>",
     "payload": { ... }
   }
 }
@@ -160,7 +172,7 @@ Authorization, protocol, validation, and routing failures keep the originating r
 
 ```json
 {
-  "version": 14,
+  "version": 15,
   "id": "<request-id>",
   "ok": false,
   "kind": "query",
@@ -169,7 +181,7 @@ Authorization, protocol, validation, and routing failures keep the originating r
 }
 ```
 
-Malformed or oversized request lines fail before routing and are reported as `kind: "error"` with `code: "invalid_request"` and an empty request id.
+Requests that fail JSON or payload decoding are reported as `kind: "error"` with `code: "invalid_request"` and an empty request id. A request line exceeding 65,536 bytes, excluding its newline, receives the same error and the connection closes. Invalid UTF-8 closes the connection without an error response.
 
 ### Event Envelope Format
 
@@ -177,7 +189,7 @@ Events are sent on subscription connections after the initial response.
 
 ```json
 {
-  "version": 14,
+  "version": 15,
   "id": "<event-id>",
   "kind": "event",
   "channel": "focus",
@@ -222,7 +234,7 @@ This envelope is produced locally by the CLI, so it does not include IPC fields 
 | `ignored_overview` | Overview is open, so `CommandHandler` rejects external/IPC commands (except `toggle-overview`) before normal execution |
 | `layout_mismatch` | Command incompatible with the active workspace layout |
 | `unauthorized` | Missing or invalid authorization token |
-| `stale_window_id` | Window ID is from a previous session or no longer valid |
+| `stale_window_id` | Well-formed window ID belongs to a different IPC session |
 | `not_found` | Target window, workspace, monitor, or rule does not exist |
 | `window_action_failed` | The window exists but its close button is missing or refused the action |
 | `no_change` | Request resolved to the current state (workspace already active, window already on the target, nothing to raise or rescue); status is `ignored` |
@@ -230,6 +242,8 @@ This envelope is produced locally by the CLI, so it does not include IPC fields 
 | `workspace_state_conflict` | Current fullscreen, scratchpad, or pending focus state prevents the requested workspace move |
 | `capture_state_conflict` | Capture state does not permit the requested start or stop transition |
 | `internal_error` | Unexpected server-side error |
+
+Malformed opaque window IDs return `invalid_arguments`. For window actions, a valid current-session ID whose window is no longer managed returns `not_found`.
 
 ---
 

@@ -86,7 +86,7 @@ final class WindowMoveIPCIntegrationTests: XCTestCase {
         let moved = try addManagedWindow(pid: 489_003, windowId: 22, to: fixture.workspaceIds[1], fixture: fixture)
         try select(focused, in: fixture.workspaceIds[0], fixture: fixture)
 
-        try withBlockedLayoutRefreshes(fixture) {
+        withBlockedLayoutRefreshes(fixture) {
             XCTAssertEqual(fixture.router.handle(moveRequest(moved, to: "1")), .executed)
             XCTAssertEqual(fixture.controller.workspaceManager.workspace(for: moved.id), fixture.workspaceIds[0])
             XCTAssertEqual(fixture.controller.workspaceManager.selectedManagedToken, focused.id)
@@ -167,9 +167,9 @@ final class WindowMoveIPCIntegrationTests: XCTestCase {
             autosaveEnabled: false
         )
         settings.animationsEnabled = false
-        settings.focusFollowsWindowToMonitor = followsFocus
-        settings.defaultLayoutType = .niri
-        settings.workspaceConfigurations = ["1", "2"].map { name in
+        settings.focus.followsWindowToMonitor = followsFocus
+        settings.workspaces.defaultLayoutType = .niri
+        settings.workspaces.configurations = ["1", "2"].map { name in
             WorkspaceConfiguration(name: name, monitorAssignment: .main, layoutType: .niri)
         }
 

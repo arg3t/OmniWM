@@ -131,7 +131,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
         expectedState.selectedNodeId = targetNode.id
         let workingFrame = controller.insetWorkingFrame(for: monitor)
         let gap = controller.innerGap(for: monitor)
-        let orientation = controller.settings.effectiveOrientation(for: monitor)
+        let orientation = controller.settings.monitors.effectiveOrientation(for: monitor)
         controller.workspaceManager.withEngineMutationScope {
             engine.resolvePrimaryContainerSpans(
                 in: workspaceId,
@@ -141,12 +141,14 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
             )
             engine.ensureProjectedSelectionVisible(
                 node: targetNode,
-                in: workspaceId,
-                motion: .disabled,
+                context: .init(
+                    workspaceId: workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: orientation
+                ),
                 state: &expectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: orientation,
                 animationConfig: nil,
                 fromContainerIndex: nil
             )
@@ -185,7 +187,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
         }
         controller.workspaceManager.setAppHidden(true, pid: token.pid, source: .ax)
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.toggleNativeFullscreen), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.fullscreen(.native)), .executed)
         XCTAssertEqual(fullscreenWrites, 0)
         XCTAssertNil(controller.workspaceManager.nativeFullscreenRecord(for: token))
     }
@@ -241,7 +243,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
             return true
         }
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.toggleNativeFullscreen), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.fullscreen(.native)), .executed)
 
         XCTAssertEqual(fullscreenWrites, 0)
         XCTAssertNil(controller.workspaceManager.nativeFullscreenRecord(for: reusedToken))
@@ -278,7 +280,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
             return true
         }
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.toggleNativeFullscreen), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.fullscreen(.native)), .executed)
 
         XCTAssertEqual(fullscreenWrites, 1)
         XCTAssertEqual(controller.workspaceManager.nativeFullscreenRecord(for: token)?.transition, .enterRequested)
@@ -335,7 +337,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
             return true
         }
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.toggleNativeFullscreen), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.fullscreen(.native)), .executed)
 
         XCTAssertEqual(fullscreenWrites, 0)
         XCTAssertNil(controller.workspaceManager.nativeFullscreenRecord(for: reusedToken))
@@ -378,7 +380,7 @@ final class NiriHiddenVisibilityIntegrationTests: XCTestCase {
             return true
         }
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.toggleNativeFullscreen), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.fullscreen(.native)), .executed)
 
         XCTAssertEqual(fullscreenWrites, 1)
         XCTAssertEqual(controller.workspaceManager.nativeFullscreenRecord(for: token)?.transition, .exitRequested)

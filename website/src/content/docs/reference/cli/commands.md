@@ -16,12 +16,12 @@ omniwmctl <command> [arguments...] [--format json|ndjson|table|tsv|text] [--json
 | Command | Type | Description |
 |---------|------|-------------|
 | `ping` | remote | Verify IPC reachability and return `pong` |
-| `version` | remote | Return the OmniWM app version and IPC protocol version |
+| `version` | remote | Return app and IPC protocol versions plus available build fingerprint fields |
 | `command` | remote | Execute window manager commands through the IPC command surface |
 | `capture` | remote | Start, stop, or inspect a diagnostics trace or performance capture |
 | `query` | remote | Query OmniWM state, registries, and protocol capabilities |
 | `rule` | remote | Manage persisted window rules and reapply them to windows |
-| `workspace` | remote | Perform workspace actions such as focusing by workspace name |
+| `workspace` | remote | Perform workspace actions such as focusing, moving, or renaming by workspace name |
 | `window` | remote | Perform window actions using session-scoped opaque window IDs |
 | `subscribe` | remote | Stream the subscribe handshake plus live event envelopes as JSON |
 | `watch` | remote | Consume subscription events and run a child command once per event |
@@ -29,6 +29,8 @@ omniwmctl <command> [arguments...] [--format json|ndjson|table|tsv|text] [--json
 | `completion <zsh\|bash\|fish>` | local | Emit a shell completion script without connecting to IPC |
 
 Remote commands require IPC to be enabled. Local commands work even when the IPC server is disabled.
+
+`omniwmctl version --json` returns `protocolVersion` and the available `appVersion`, `gitHash`, `buildConfiguration`, and `executableSHA256` fields in `result.payload`. Optional fields are omitted when unavailable; the fingerprint identifies the running app build and executable.
 
 ### Global Flags
 

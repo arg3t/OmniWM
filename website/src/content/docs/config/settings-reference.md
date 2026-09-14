@@ -8,7 +8,7 @@ sidebar:
 Complete reference for `settings.toml`, in the file's canonical order. The authoritative schema is [`CanonicalTOMLConfig.swift`](https://github.com/BarutSRB/OmniWM/blob/main/Sources/OmniWM/Core/Config/CanonicalTOMLConfig.swift); defaults come from [`SettingsExport.swift`](https://github.com/BarutSRB/OmniWM/blob/main/Sources/OmniWM/Core/Config/SettingsExport.swift) and [`BuiltInSettingsDefaults.swift`](https://github.com/BarutSRB/OmniWM/blob/main/Sources/OmniWM/Core/Config/BuiltInSettingsDefaults.swift).
 
 :::caution
-The current schema is strict — a missing required key in a version 2 file invalidates the whole file, `hotkeys` must list every assignable action exactly once, and an enumerated string key must use one of its listed values (an unknown value rejects the whole file, exactly like a missing key). Edit values in place; see [Configuration](/config/configuration/).
+The current schema is strict — a missing required key in a version 3 file invalidates the whole file, `hotkeys` must list every assignable action exactly once, and an enumerated string key must use one of its listed values (an unknown value rejects the whole file, exactly like a missing key). Edit values in place; see [Configuration](/config/configuration/).
 :::
 
 **Conventions**
@@ -22,15 +22,15 @@ The current schema is strict — a missing required key in a version 2 file inva
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `schemaVersion` | integer | `2` | Version of the complete `settings.toml` schema. This top-level key appears before the first table. |
+| `schemaVersion` | integer | `3` | Version of the complete `settings.toml` schema. This top-level key appears before the first table. |
 
 The canonical file declares:
 
 ```toml
-schemaVersion = 2
+schemaVersion = 3
 ```
 
-An absent version identifies a legacy version 0 file, while OmniWM v0.6.4 emitted version 1. OmniWM guarantees sequential in-memory migration for settings emitted by v0.6.2 through v0.6.4 before strict version 2 validation. A successful version 0 or version 1 upgrade creates an exact write-once `settings.toml.pre-v2` or `settings.toml.pre-v2.1` backup, then atomically rewrites canonical TOML once; this can reorder keys and removes comments, while preserving unrecognized keys when their owner can be matched safely. Valid release migrations never use the `.corrupt` recovery slots. Older schema-less files are attempted but remain untouched with defaults active if they cannot validate, and files declaring a newer unsupported version remain untouched with configuration writes blocked. See [Automatic version upgrades](/config/configuration/#automatic-version-upgrades) for the migration rules and recovery behavior.
+An absent version identifies a legacy version 0 file, while OmniWM v0.6.4 emitted version 1. OmniWM upgrades version 0, 1, and 2 files sequentially in memory before strict version 3 validation, retaining the compatibility guarantee for settings emitted by v0.6.2 through v0.6.4. The version 2 to version 3 step moves the old flat routing rows into one saved arrangement. A successful upgrade creates an exact write-once `settings.toml.pre-v3` or `settings.toml.pre-v3.1` backup, then atomically rewrites canonical TOML once; this can reorder keys and removes comments, while preserving unrecognized keys when their owner can be matched safely. Valid release migrations never use the `.corrupt` recovery slots. Older schema-less files are attempted but remain untouched with defaults active if they cannot validate, and files declaring a newer unsupported version remain untouched with configuration writes blocked. See [Automatic version upgrades](/config/configuration/#automatic-version-upgrades) for the migration rules and recovery behavior.
 
 ## general
 
@@ -57,9 +57,9 @@ Pointer-driven focus and monitor-edge focus/move behavior.
 | `raiseOnMouseFocus` | boolean | `false` | Also raises the window when focus-follows-mouse focuses it. |
 | `lockModifier` | string | `"off"` | Modifier that holds focus in place while pressed: `off`, `option`, `leftOption`, `rightOption`, `command`, `leftCommand`, `rightCommand`, `control`, `leftControl`, `rightControl`, `shift`, `leftShift`, `rightShift`. |
 | `moveMouseToFocusedWindow` | boolean | `false` | Moves the pointer to the window that gains focus. |
-| `followsWindowToMonitor` | boolean | `false` | Keeps focus on a window when it moves to another monitor. |
+| `followsWindowToMonitor` | boolean | `false` | Follows ordinary window or column transfers to another workspace, including dedicated monitor-move actions. Edge-crossing moves always follow. |
 | `crossesMonitorAtEdge` | boolean | `false` | Directional focus continues onto the neighboring monitor at the screen edge. |
-| `moveCrossesMonitorAtEdge` | boolean | `false` | Directional window move continues onto the neighboring monitor at the screen edge. |
+| `moveCrossesMonitorAtEdge` | boolean | `false` | Directional window move continues onto the neighboring monitor at the workspace edge and always follows the moved window. |
 
 ## mouseWarp
 
@@ -77,7 +77,36 @@ How monitors are arranged for cross-monitor focus, move, and warp.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `mode` | string | `"macOS"` | `macOS` follows the system display arrangement; `custom` uses the grid defined in [`monitorRoutingOverrides`](#per-monitor-overrides). |
+| `mode` | string | `"macOS"` | `macOS` follows the system display arrangement; `custom` selects a saved arrangement for the connected displays. |
+| `arrangements` | array of tables | `[]` | Saved custom routing grids, written as `[[routing.arrangements]]` with nested `[[routing.arrangements.monitors]]` rows. |
+
+Each arrangement has a required `id` UUID and a required `monitors` array. Each monitor row requires `monitorName`, `gridColumn`, and `gridRow`; `monitorDisplayUUID` and `monitorDisplayId` are optional identity fields. Grid coordinates are integers. Settings records display UUIDs automatically; matching uses UUID first and the existing display-ID/name fallback for displays without UUIDs.
+
+OmniWM selects the first exact connected-set match. Otherwise, it selects the arrangement with the fewest total rows that contains every connected display; the first arrangement wins ties. It then uses only the connected displays' grid positions. An uncovered set or an invalid selected grid follows macOS. Resolution, enumeration order, and macOS placement do not affect selection.
+
+Editing, resetting, or finishing Monitor Setup saves exactly the connected set and retains an existing exact arrangement's ID. An edit to an inherited grid creates a separate arrangement without changing its larger source. Connecting displays or opening Settings does not create arrangements. Keep arrangement IDs stable when editing by hand so unrecognized configuration fields remain associated with the right arrangement.
+
+```toml
+[routing]
+mode = "custom"
+
+[[routing.arrangements]]
+id = "FBE84D50-689B-4B97-A820-B8E3BFD581B7"
+
+[[routing.arrangements.monitors]]
+gridColumn = 0
+gridRow = 1
+monitorDisplayUUID = "8D575171-D0DD-43BB-9FEF-356E6B7C917D"
+monitorName = "Built-in Retina Display"
+
+[[routing.arrangements.monitors]]
+gridColumn = 0
+gridRow = 0
+monitorDisplayUUID = "3EFD184C-D5D3-40EF-AF27-14C4222A467B"
+monitorName = "DELL U2720Q"
+```
+
+For no saved arrangements, use `arrangements = []` inside `[routing]` and omit the array-of-table entries. The example UUIDs above are illustrative; use the identities recorded for your displays by **Settings > Monitors**.
 
 ## gaps
 
@@ -128,7 +157,7 @@ Border drawn around the focused window.
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Draws the focused-window border. |
-| `width` | float | `5.0` | Exterior border width in points. Managed layout frames use its physical-pixel ceiling as the minimum runtime inner and outer clearance while borders are enabled; stored gap values are unchanged. |
+| `width` | float | `5.0` | Exterior border width in points; configured values are clamped to 1–12 points when applied. Managed layout frames use its physical-pixel ceiling as the minimum runtime inner and outer clearance while borders are enabled; stored gap values are unchanged. |
 | `color` | color table | red ≈ `0.0846`, green `1.0`, blue ≈ `0.9793`, alpha `1.0` | Border color (default is a cyan accent). |
 
 ## overview
@@ -236,12 +265,12 @@ The drop-down (Quake) terminal.
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | Enables the Quake terminal. |
-| `position` | string | `"center"` | Slide-in position: `top`, `bottom`, `left`, `right`, `center`. |
-| `widthPercent` | float | `50.0` | Width as a percentage of the screen. |
-| `heightPercent` | float | `50.0` | Height as a percentage of the screen. |
+| `position` | string | `"center"` | Terminal position: `top`, `bottom`, `left`, `right`, `center`. Edge positions slide in; `center` fades in place. |
+| `widthPercent` | float | `50.0` | Width as a percentage of the monitor's available screen area. |
+| `heightPercent` | float | `50.0` | Height as a percentage of the monitor's available screen area. |
 | `animationDuration` | float | `0.2` | Show/hide animation duration in seconds. |
 | `autoHide` | boolean | `false` | Hides the terminal when it loses focus. |
-| `opacity` *(optional)* | float | `1.0` | Terminal window opacity (`0.0`–`1.0`). |
+| `opacity` *(optional)* | float | `1.0` | Terminal background opacity (`0.0`–`1.0`). |
 | `backgroundEffect` | string | `"standardBlur"` | Background material: `standardBlur`, `glassRegular`, `glassClear`. |
 | `backgroundBlurRadius` *(optional)* | integer | `0` | Background blur radius; `0` disables the extra blur. |
 | `monitorMode` *(optional)* | string | `"focusedWindow"` | Which monitor it appears on: `mouseCursor`, `focusedWindow`, `mainMonitor`. |
@@ -275,7 +304,7 @@ Array of tables — one entry per assignable action, each with an `id` (the acti
 ```toml
 [[hotkeys]]
 binding = "Option+1"
-id = "switchWorkspace.1"
+id = "switchWorkspace.0"
 
 [[hotkeys]]
 binding = "Unassigned"
@@ -284,6 +313,7 @@ id = "toggleScratchpad.1"
 
 - `binding` is a human-readable chord: `+`-joined modifiers (`Control`, `Option`, `Shift`, `Command`, or the `Hyper` shorthand for the full [`hyperKeyModifiers`](#general) set) followed by a key name — or `"Unassigned"`. A `Left `/`Right ` prefix pins a modifier to one side (e.g. `"Left Option+H"`).
 - The array is validated strictly: every assignable action must appear **exactly once**. An unknown, unassignable, duplicate, or missing action id rejects the whole file, so rebind by editing `binding` values in place — never add or remove entries.
+- The numeric suffix is zero-based for `switchWorkspace.N`, `moveToWorkspace.N`, `focusColumn.N`, and `moveColumnToWorkspace.N` — `switchWorkspace.0` is *Switch to Workspace 1* (`Option + 1` by default) — and one-based for `switchWorkspaceSlot.N`, `moveToWorkspaceSlot.N`, `focusWindowInColumn.N`, `moveColumnToIndex.N`, `toggleScratchpad.N`, and `assignFocusedWindowToScratchpad.N`.
 
 The default bindings are listed in the [keyboard shortcuts guide](/guides/keyboard-shortcuts/); the full action list is visible in **Settings > Hotkeys** and via `omniwmctl query commands`.
 
@@ -296,10 +326,12 @@ Array of workspace definitions.
 | `id` | string (UUID) | Stable identity; keep it unchanged when editing. |
 | `name` | string | Workspace name; numeric names define the ordering and number-key targets. |
 | `displayName` *(optional)* | string | Label shown in the bar instead of `name` (emoji welcome). |
-| `monitorAssignment` | table | `type` = `main`, `secondary`, or `specificDisplay` (the latter carries an `output` value identifying the display). |
+| `monitorAssignment` | table | `type` = `main`, `secondary`, or `specificDisplay`. For `specificDisplay`, the `output` sub-table contains a required `name` (string), optional `displayUUID` (string), and optional `displayId` (integer). |
 | `layoutType` | string | `default` (follow `general.defaultLayoutType`), `niri`, `dwindle`, or `stack`. The `stack` layout uses one left master window and an equal-height right stack. |
 
 The stack layout uses the existing focus up/down and move up/down commands. Focus moves through the workspace order. Move swaps the focused window with the previous or next tiled window, and wraps at the order boundary.
+
+For `specificDisplay`, `displayUUID` takes precedence when present. Without it, `displayId` and `name` must match a monitor that has no display UUID. A name alone cannot identify the target monitor.
 
 Default: nine workspaces named `1`–`9`, all Niri — `1`–`5` and `8`–`9` on the main monitor, `6` (shown as ❤️) and `7` (shown as 🚀) on the secondary, matching the default `Option + 1`–`9` bindings.
 
@@ -320,7 +352,7 @@ Array of per-app window rules, editable in the **App Rules** window. Matchers se
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `id` | string (UUID) | Stable rule identity. |
+| `id` *(optional)* | string (UUID) | Stable rule identity; generated if omitted. Keep an existing ID unchanged when editing. |
 | `bundleId` | string | App bundle ID to match (may be empty when an advanced matcher is used). |
 | `appNameSubstring` *(optional)* | string | Matches on the app name. |
 | `titleSubstring` *(optional)* | string | Matches on the window title. |
@@ -345,7 +377,7 @@ minWidth = 574.0
 
 ## Per-monitor overrides
 
-Six arrays hold per-monitor exceptions to the global tables. Every entry identifies its monitor with `monitorName` (required) plus optional `monitorDisplayUUID` and `monitorDisplayId`; all entries except orientation and routing also carry an `id` UUID. Override keys are all optional — an omitted key falls back to the corresponding global setting. All six arrays default to empty.
+Five arrays hold per-monitor exceptions to the global tables. Every entry identifies its monitor with `monitorName` (required) plus optional `monitorDisplayUUID` and `monitorDisplayId`; all entries except orientation also carry an `id` UUID. Override keys are all optional — an omitted key falls back to the corresponding global setting. All five arrays default to empty. Custom routing grids live separately in [`routing.arrangements`](#routing).
 
 | Array | Overridable keys |
 | --- | --- |
@@ -354,7 +386,6 @@ Six arrays hold per-monitor exceptions to the global tables. Every entry identif
 | `monitorNiriOverrides` | `visibleContainerCount`, `centerFocusedColumn`, `alwaysCenterSingleColumn`, `singleWindowFit`, `infiniteLoop` — see [`niri`](#niri) |
 | `monitorDwindleOverrides` | `smartSplit`, `defaultSplitRatio`, `splitWidthMultiplier`, `singleWindowFit`, `useGlobalGaps`, `innerGap` — see [`dwindle`](#dwindle) |
 | `monitorGapOverrides` | `innerGap`, `outerGapLeft`, `outerGapRight`, `outerGapTop`, `outerGapBottom`, `fullscreenUsesOuterGaps` — see [`gaps`](#gaps) |
-| `monitorRoutingOverrides` | `gridColumn`, `gridRow` (both required integers): the monitor's cell in the custom routing grid used when [`routing.mode`](#routing) is `custom` |
 
 ```toml
 [[monitorGapOverrides]]
@@ -362,11 +393,6 @@ id = "0B54A3C1-6E1B-4D5B-9A64-2F0D8A11C001"
 innerGap = 8.0
 monitorName = "DELL U2720Q"
 outerGapTop = 4.0
-
-[[monitorRoutingOverrides]]
-gridColumn = 1
-gridRow = 0
-monitorName = "DELL U2720Q"
 ```
 
 These are most easily managed from **Settings > Monitors** and the per-layout tabs, which record the display's UUID automatically so the override survives display reconnects.

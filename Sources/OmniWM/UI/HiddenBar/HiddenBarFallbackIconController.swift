@@ -104,7 +104,7 @@ final class HiddenBarFallbackIconController {
     }
 
     private func makePanel(monitorId: Monitor.ID) -> WorkspaceBarPanel {
-        let panel = WorkspaceBarManager.defaultPanel()
+        let panel = WorkspaceBarPanel.defaultPanel()
         panel.level = .statusBar
 
         let view = NSVisualEffectView()
@@ -147,10 +147,12 @@ final class HiddenBarFallbackIconController {
         OwnedWindowRegistry.shared.register(
             panel,
             surfaceId: Self.surfaceId(monitorId: monitorId),
-            kind: .hiddenBarPanel,
-            hitTestPolicy: .interactive,
-            capturePolicy: .excluded,
-            suppressesManagedFocusRecovery: false
+            policy: SurfacePolicy(
+                kind: .hiddenBarPanel,
+                hitTestPolicy: .interactive,
+                capturePolicy: .excluded,
+                suppressesManagedFocusRecovery: false
+            )
         )
         panelsByMonitor[monitorId] = panel
         return panel

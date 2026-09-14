@@ -59,16 +59,21 @@ final class MonitorSetupGuideTests: XCTestCase {
             monitor(id: 1, frame: CGRect(x: 0, y: 0, width: 1600, height: 900)),
             monitor(id: 2, frame: CGRect(x: 1600, y: 0, width: 1200, height: 700))
         ]
-        let initialMode = settings.monitorRoutingMode
-        let initialRows = settings.monitorRoutingSettings
-        let initialMouseWarp = settings.mouseWarpEnabled
-        let initialWorkspaceConfigurations = settings.workspaceConfigurations
+        let disconnected = monitor(id: 3, frame: CGRect(x: 2800, y: 0, width: 1000, height: 700))
+        settings.monitors.routingMode = .custom
+        settings.monitors.arrangements = [
+            MonitorArrangement(monitors: MonitorRouting.seedLayout(from: monitors + [disconnected]))
+        ]
+        let initialMode = settings.monitors.routingMode
+        let initialArrangements = settings.monitors.arrangements
+        let initialMouseWarp = settings.pointer.enabled
+        let initialWorkspaceConfigurations = settings.workspaces.configurations
         var draft = MonitorSetupDraft(
             monitors: monitors,
-            routingMode: settings.monitorRoutingMode,
-            routingSettings: settings.monitorRoutingSettings,
-            mouseWarpEnabled: settings.mouseWarpEnabled,
-            workspaceConfigurations: settings.workspaceConfigurations
+            routingMode: settings.monitors.routingMode,
+            arrangements: settings.monitors.arrangements,
+            mouseWarpEnabled: settings.pointer.enabled,
+            workspaceConfigurations: settings.workspaces.configurations
         )
 
         draft.move(monitors[1].id, direction: .down)
@@ -78,10 +83,10 @@ final class MonitorSetupGuideTests: XCTestCase {
         }
         draft.addWorkspace(for: monitors[1])
 
-        XCTAssertEqual(settings.monitorRoutingMode, initialMode)
-        XCTAssertEqual(settings.monitorRoutingSettings, initialRows)
-        XCTAssertEqual(settings.mouseWarpEnabled, initialMouseWarp)
-        XCTAssertEqual(settings.workspaceConfigurations, initialWorkspaceConfigurations)
+        XCTAssertEqual(settings.monitors.routingMode, initialMode)
+        XCTAssertEqual(settings.monitors.arrangements, initialArrangements)
+        XCTAssertEqual(settings.pointer.enabled, initialMouseWarp)
+        XCTAssertEqual(settings.workspaces.configurations, initialWorkspaceConfigurations)
     }
 
     func testGuideBuildsAtMinimumSettingsWindowSize() {

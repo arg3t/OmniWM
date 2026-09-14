@@ -32,7 +32,7 @@ struct MonitorSettingsTab: View {
 
     private var routingEditorLayout: MonitorSettingsTabModel.RoutingEditorLayout {
         MonitorSettingsTabModel.routingEditorLayout(
-            existing: settings.monitorRoutingSettings,
+            arrangements: settings.monitors.arrangements,
             monitors: sortedMonitors
         )
     }
@@ -72,9 +72,9 @@ struct MonitorSettingsTab: View {
 
     private var routingModeSelection: Binding<MonitorRoutingMode> {
         Binding(
-            get: { settings.monitorRoutingMode },
+            get: { settings.monitors.routingMode },
             set: { mode in
-                settings.monitorRoutingMode = mode
+                settings.monitors.routingMode = mode
                 guard mode == .custom else { return }
                 ensureRoutingSeeded()
             }
@@ -86,37 +86,8 @@ struct MonitorSettingsTab: View {
             subtitle: "macOS controls where windows are placed. OmniWM can use a separate map that matches how "
                 + "your displays are actually arranged on your desk."
         ) {
-            Section("Guided Setup") {
-                HStack(alignment: .center, spacing: 12) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(settings.monitorSetupStatus == .completed
-                                ? "Multi-monitor setup is complete"
-                                : "Set up multiple displays")
-                                .fontWeight(.medium)
-                            Text(
-                                settings.monitorSetupStatus == .completed
-                                    ? "Run the guide again after moving, replacing, or adding a display."
-                                    : "Follow four guided steps for display placement, workspace homes, and Mouse Warp."
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: settings.monitorSetupStatus == .completed
-                            ? "checkmark.circle.fill"
-                            : "sparkles")
-                            .foregroundStyle(
-                                settings.monitorSetupStatus == .completed ? Color.green : Color.accentColor
-                            )
-                    }
-
-                    Spacer()
-
-                    Button("Run Monitor Setup…") {
-                        isMonitorSetupPresented = true
-                    }
-                }
+            MonitorSetupLaunchSection(isComplete: settings.monitorSetupStatus == .completed) {
+                isMonitorSetupPresented = true
             }
 
             Section("macOS Arrangement") {
@@ -144,7 +115,7 @@ struct MonitorSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
 
-                if settings.monitorRoutingMode == .custom {
+                if settings.monitors.routingMode == .custom {
                     if routingTiles.isEmpty {
                         Text(
                             connectedMonitors.isEmpty ?
@@ -171,19 +142,33 @@ struct MonitorSettingsTab: View {
                         RoutingAccessibleEditor(rows: routingRows, onMove: { moveRouting($0, $1) })
                     }
 
-                    if routingEditorLayout.usesMacOSFallback {
-                        SettingsCaption(
-                            "Saved custom routing is incomplete or invalid for the connected monitors. "
-                                + "The macOS arrangement is shown without changing your saved layout. "
-                                + "Dragging a monitor or using the arrow controls saves a complete custom arrangement."
-                        )
+                    if !sortedMonitors.isEmpty {
+                        switch routingEditorLayout.source {
+                        case .exact:
+                            SettingsCaption(
+                                "This arrangement is saved for the connected displays. "
+                                    + "Changes update only this arrangement."
+                            )
+                        case .inherited:
+                            SettingsCaption(
+                                "Using an arrangement saved with additional displays. "
+                                    + "Editing or resetting saves a separate arrangement for the displays connected now."
+                            )
+                        case .macOS:
+                            SettingsCaption(
+                                "No valid saved arrangement covers the connected displays. "
+                                    + "The macOS arrangement is shown without changing your saved arrangements. "
+                                    + "Dragging a monitor or using the arrow controls saves an arrangement for these displays."
+                            )
+                        }
                     }
 
                     Button("Reset Custom Arrangement to macOS Layout") { seedFromMacOS() }
 
                     SettingsCaption(
                         "Make this look like your real desk. Displays in the same row or column can exchange focus, "
-                            + "windows, and the pointer. This does not change where macOS places windows."
+                            + "windows, and the pointer. OmniWM remembers an arrangement for each set of connected displays. "
+                            + "This does not change where macOS places windows."
                     )
                 } else {
                     SettingsCaption(
@@ -194,26 +179,26 @@ struct MonitorSettingsTab: View {
             }
 
             Section("Cross-Monitor Behavior") {
-                Toggle("Focus Across Monitor at Edge", isOn: $settings.focusCrossesMonitorAtEdge)
-                Toggle("Move Window Across Monitor at Edge", isOn: $settings.moveCrossesMonitorAtEdge)
-                Toggle("Follow Window to Monitor", isOn: $settings.focusFollowsWindowToMonitor)
-                Toggle(isOn: $settings.mouseWarpEnabled) {
+                Toggle("Focus Across Monitor at Edge", isOn: Bindable(settings.focus).crossesMonitorAtEdge)
+                Toggle("Move Window Across Monitor at Edge", isOn: Bindable(settings.focus).moveCrossesMonitorAtEdge)
+                Toggle("Follow Window to Monitor", isOn: Bindable(settings.focus).followsWindowToMonitor)
+                Toggle(isOn: Bindable(settings.pointer).enabled) {
                     HStack(spacing: 8) {
                         Text("Mouse Warp")
                         MonitorBadge(text: "Recommended")
                     }
                 }
-                Toggle("Constrain Cursor to Arrangement", isOn: $settings.cursorContainmentEnabled)
-                    .disabled(!settings.mouseWarpEnabled || settings.monitorRoutingMode != .custom)
+                Toggle("Constrain Cursor to Arrangement", isOn: Bindable(settings.pointer).constrainToArrangement)
+                    .disabled(!settings.pointer.enabled || settings.monitors.routingMode != .custom)
 
                 LabeledContent("Mouse Warp Margin") {
-                    Stepper(value: $settings.mouseWarpMargin, in: 1 ... 10) {
-                        Text("\(settings.mouseWarpMargin) px")
+                    Stepper(value: Bindable(settings.pointer).margin, in: 1 ... 10) {
+                        Text("\(settings.pointer.margin) px")
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
                 }
-                .disabled(!settings.mouseWarpEnabled)
+                .disabled(!settings.pointer.enabled)
 
                 SettingsCaption(
                     "Mouse Warp moves the pointer across matching display edges using the OmniWM routing arrangement. "
@@ -290,16 +275,16 @@ struct MonitorSettingsTab: View {
     }
 
     private func ensureRoutingSeeded() {
-        guard settings.monitorRoutingMode == .custom else { return }
+        guard settings.monitors.routingMode == .custom else { return }
         guard MonitorSettingsTabModel.shouldSeedRouting(
-            existing: settings.monitorRoutingSettings,
-            connectedMonitorCount: connectedMonitors.count
+            arrangements: settings.monitors.arrangements,
+            monitors: connectedMonitors
         ) else { return }
-        settings.monitorRoutingSettings = MonitorRouting.seedLayout(from: connectedMonitors)
+        seedFromMacOS()
     }
 
     private func seedFromMacOS() {
-        settings.monitorRoutingSettings = MonitorRouting.seedLayout(from: connectedMonitors)
+        settings.monitors.storeRoutingLayout(MonitorRouting.seedLayout(from: connectedMonitors), for: connectedMonitors)
     }
 
     private func placeRouting(_ monitorID: Monitor.ID, column: Int, row: Int) {
@@ -314,11 +299,11 @@ struct MonitorSettingsTab: View {
             at: .init(column: column, row: row),
             cells: &cells
         )
-        settings.monitorRoutingSettings = MonitorSettingsTabModel.routingSettingsAfterEdit(
-            existing: settings.monitorRoutingSettings,
+        let updated = MonitorSettingsTabModel.routingSettingsAfterEdit(
             monitors: monitors,
             cells: cells.mapValues { (column: $0.column, row: $0.row) }
         )
+        settings.monitors.storeRoutingLayout(updated, for: monitors)
     }
 
     private func moveRouting(_ monitorID: Monitor.ID, _ direction: Direction) {
@@ -377,11 +362,11 @@ private struct SelectedMonitorDetails: View {
     let displayLabel: MonitorDisplayLabel
 
     private var orientationOverride: Monitor.Orientation? {
-        settings.orientationSettings(for: monitor)?.orientation
+        settings.monitors.orientationSettings(for: monitor)?.orientation
     }
 
     private var effectiveOrientation: Monitor.Orientation {
-        settings.effectiveOrientation(for: monitor)
+        settings.monitors.effectiveOrientation(for: monitor)
     }
 
     var body: some View {
@@ -436,119 +421,11 @@ private struct SelectedMonitorDetails: View {
         )
 
         if orientation == nil {
-            settings.removeOrientationSettings(for: monitor)
+            settings.monitors.removeOrientationSettings(for: monitor)
         } else {
-            settings.updateOrientationSettings(newSettings, for: monitor)
+            settings.monitors.updateOrientationSettings(newSettings, for: monitor)
         }
 
         controller.updateMonitorOrientations()
-    }
-}
-
-struct MonitorDisplayLabel: Equatable {
-    let name: String
-    let duplicateIndex: Int?
-
-    var badgeText: String? {
-        duplicateIndex.map { "#\($0)" }
-    }
-
-    var accessibilityName: String {
-        if let duplicateIndex {
-            return "\(name), duplicate \(duplicateIndex)"
-        }
-        return name
-    }
-}
-
-enum MonitorSettingsTabModel {
-    struct RoutingEditorLayout {
-        let settings: [MonitorRoutingSettings]
-        let usesMacOSFallback: Bool
-    }
-
-    static func routingEditorLayout(
-        existing: [MonitorRoutingSettings],
-        monitors: [Monitor]
-    ) -> RoutingEditorLayout {
-        if let completeLayout = MonitorRouting.completeLayout(existing, for: monitors) {
-            return RoutingEditorLayout(settings: completeLayout, usesMacOSFallback: false)
-        }
-
-        return RoutingEditorLayout(
-            settings: MonitorRouting.seedLayout(from: monitors),
-            usesMacOSFallback: !monitors.isEmpty
-        )
-    }
-
-    static func routingSettingsAfterEdit(
-        existing: [MonitorRoutingSettings],
-        monitors: [Monitor],
-        cells: [Monitor.ID: (column: Int, row: Int)]
-    ) -> [MonitorRoutingSettings] {
-        var updated = existing
-        for monitor in monitors {
-            guard let cell = cells[monitor.id] else { continue }
-            MonitorSettingsStore.update(
-                MonitorRoutingSettings(
-                    monitorName: monitor.name,
-                    gridColumn: cell.column,
-                    gridRow: cell.row
-                ),
-                for: monitor,
-                in: &updated
-            )
-        }
-        return updated
-    }
-
-    static func shouldSeedRouting(
-        existing: [MonitorRoutingSettings],
-        connectedMonitorCount: Int
-    ) -> Bool {
-        existing.isEmpty && connectedMonitorCount > 0
-    }
-
-    static func sortedMonitors(_ monitors: [Monitor]) -> [Monitor] {
-        Monitor.sortedByPosition(monitors)
-    }
-
-    static func normalizedSelection(_ selectedMonitor: Monitor.ID?, monitors: [Monitor]) -> Monitor.ID? {
-        guard !monitors.isEmpty else { return nil }
-
-        if let selectedMonitor,
-           monitors.contains(where: { $0.id == selectedMonitor })
-        {
-            return selectedMonitor
-        }
-
-        return monitors.first?.id
-    }
-
-    static func displayLabels(for monitors: [Monitor]) -> [Monitor.ID: MonitorDisplayLabel] {
-        let sorted = sortedMonitors(monitors)
-        let totals = sorted.reduce(into: [String: Int]()) { counts, monitor in
-            counts[monitor.name, default: 0] += 1
-        }
-        var nextIndexByName: [String: Int] = [:]
-        var labels: [Monitor.ID: MonitorDisplayLabel] = [:]
-
-        for monitor in sorted {
-            nextIndexByName[monitor.name, default: 0] += 1
-            let total = totals[monitor.name, default: 0]
-            let duplicateIndex = total > 1 ? nextIndexByName[monitor.name] : nil
-            labels[monitor.id] = MonitorDisplayLabel(name: monitor.name, duplicateIndex: duplicateIndex)
-        }
-
-        return labels
-    }
-}
-
-extension Monitor.Orientation {
-    var displayName: String {
-        switch self {
-        case .horizontal: "Horizontal"
-        case .vertical: "Vertical"
-        }
     }
 }

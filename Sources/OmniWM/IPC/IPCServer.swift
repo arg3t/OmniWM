@@ -26,9 +26,12 @@ protocol IPCServerLifecycle: AnyObject {
 
 actor IPCConnectionRegistry {
     private var connections: [UUID: IPCConnection] = [:]
+    private var isStopped = false
 
-    func insert(_ connection: IPCConnection) {
+    func insert(_ connection: IPCConnection) -> Bool {
+        guard !isStopped else { return false }
         connections[connection.id] = connection
+        return true
     }
 
     func remove(id: UUID) {
@@ -36,6 +39,7 @@ actor IPCConnectionRegistry {
     }
 
     func stopAll() async {
+        isStopped = true
         let currentConnections = Array(connections.values)
         connections.removeAll()
         for connection in currentConnections {
@@ -172,7 +176,10 @@ final class IPCServer: IPCServerLifecycle {
                     }
                 )
 
-                await connectionRegistry.insert(connection)
+                guard await connectionRegistry.insert(connection) else {
+                    await connection.stop()
+                    return
+                }
                 await connection.start()
             }
         }
@@ -294,7 +301,7 @@ final class IPCServer: IPCServerLifecycle {
         authorized: Bool
     ) -> FileHandle? {
         guard authorized else { return nil }
-        configureSocket(socket.rawValue, nonBlocking: false)
+        configureSocket(socket.rawValue, nonBlocking: true)
         return FileHandle(
             fileDescriptor: socket.relinquish(),
             closeOnDealloc: true
@@ -321,7 +328,7 @@ final class IPCServer: IPCServerLifecycle {
         return address
     }
 
-    private static func configureSocket(_ fd: Int32, nonBlocking: Bool) {
+    static func configureSocket(_ fd: Int32, nonBlocking: Bool) {
         let existingFlags = fcntl(fd, F_GETFL, 0)
         if existingFlags >= 0 {
             let updatedFlags = nonBlocking ? (existingFlags | O_NONBLOCK) : (existingFlags & ~O_NONBLOCK)

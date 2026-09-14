@@ -12,13 +12,10 @@ extension NiriLayoutEngine {
 
     func animateColumnsForRemoval(
         columnIndex removedIdx: Int,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: inout ViewportState,
-        gaps: CGFloat,
-        orientation: Monitor.Orientation
+        context: NiriInteractionContext,
+        state: inout ViewportState
     ) -> ColumnRemovalResult {
-        let cols = columns(in: workspaceId)
+        let cols = columns(in: context.workspaceId)
         guard removedIdx >= 0, removedIdx < cols.count else {
             return ColumnRemovalResult(
                 fallbackSelectionId: nil,
@@ -27,11 +24,11 @@ extension NiriLayoutEngine {
         }
 
         let activeIdx = state.activeColumnIndex
-        let primarySpan = switch orientation {
+        let primarySpan = switch context.orientation {
         case .horizontal: cols[removedIdx].cachedWidth
         case .vertical: cols[removedIdx].cachedHeight
         }
-        let viewportOffset = primarySpan + gaps
+        let viewportOffset = primarySpan + context.gaps
         let postRemovalCount = cols.count - 1
 
         animateColumnsAroundRemoval(
@@ -39,47 +36,31 @@ extension NiriLayoutEngine {
             removedIdx: removedIdx,
             activeIdx: activeIdx,
             offset: viewportOffset,
-            in: workspaceId,
-            motion: motion,
-            orientation: orientation
+            context: context
         )
 
         let removingNode = cols[removedIdx].windowNodes.first
-        let fallback = removingNode.flatMap { fallbackSelectionOnRemoval(removing: $0.id, in: workspaceId) }
+        let fallback = removingNode.flatMap { fallbackSelectionOnRemoval(removing: $0.id, in: context.workspaceId) }
 
+        var restorePreviousViewOffset: CGFloat?
         if removedIdx < activeIdx {
             state.activeColumnIndex = activeIdx - 1
             state.rebaseOffset(by: viewportOffset)
-            state.activatePrevColumnOnRemoval = nil
-            return ColumnRemovalResult(
-                fallbackSelectionId: fallback,
-                restorePreviousViewOffset: nil
-            )
         } else if removedIdx == activeIdx,
                   let prevOffset = state.activatePrevColumnOnRemoval
         {
             let newActiveIdx = max(0, activeIdx - 1)
             state.activeColumnIndex = newActiveIdx
-            state.activatePrevColumnOnRemoval = nil
-            return ColumnRemovalResult(
-                fallbackSelectionId: fallback,
-                restorePreviousViewOffset: prevOffset
-            )
+            restorePreviousViewOffset = prevOffset
         } else if removedIdx == activeIdx {
             let newActiveIdx = min(activeIdx, max(0, postRemovalCount - 1))
             state.activeColumnIndex = newActiveIdx
-            state.activatePrevColumnOnRemoval = nil
-            return ColumnRemovalResult(
-                fallbackSelectionId: fallback,
-                restorePreviousViewOffset: nil
-            )
-        } else {
-            state.activatePrevColumnOnRemoval = nil
-            return ColumnRemovalResult(
-                fallbackSelectionId: fallback,
-                restorePreviousViewOffset: nil
-            )
         }
+        state.activatePrevColumnOnRemoval = nil
+        return ColumnRemovalResult(
+            fallbackSelectionId: fallback,
+            restorePreviousViewOffset: restorePreviousViewOffset
+        )
     }
 
     func animateColumnsAroundRemoval(
@@ -87,22 +68,12 @@ extension NiriLayoutEngine {
         removedIdx: Int,
         activeIdx: Int,
         offset: CGFloat,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        orientation: Monitor.Orientation
+        context: NiriInteractionContext
     ) {
         guard removedIdx >= 0, removedIdx < cols.count else { return }
 
-        guard motion.animationsEnabled else {
-            for col in cols {
-                col.animateMoveFrom(
-                    displacement: .zero,
-                    clock: animationClock,
-                    config: windowMovementAnimationConfig,
-                    displayRefreshRate: displayRefreshRate(in: workspaceId),
-                    animated: false
-                )
-            }
+        guard context.motion.animationsEnabled else {
+            resetColumnMoveAnimations(cols, in: context.workspaceId)
             return
         }
 
@@ -117,103 +88,96 @@ extension NiriLayoutEngine {
             displacement = -offset
         }
 
-        let movement = switch orientation {
+        let movement = switch context.orientation {
         case .horizontal: CGPoint(x: displacement, y: 0)
         case .vertical: CGPoint(x: 0, y: displacement)
         }
-        for col in animatedColumns {
-            if !col.offsetMoveAnimCurrent(displacement, orientation: orientation) {
-                col.animateMoveFrom(
-                    displacement: movement,
-                    clock: animationClock,
-                    config: windowMovementAnimationConfig,
-                    displayRefreshRate: displayRefreshRate(in: workspaceId),
-                    animated: motion.animationsEnabled
-                )
-            }
+        for col in animatedColumns where !col.offsetMoveAnimCurrent(displacement, orientation: context.orientation) {
+            col.animateMoveFrom(
+                displacement: movement,
+                clock: animationClock,
+                config: windowMovementAnimationConfig,
+                displayRefreshRate: displayRefreshRate(in: context.workspaceId),
+                animated: context.motion.animationsEnabled
+            )
         }
     }
 
     func animateColumnsForAddition(
         columnIndex addedIdx: Int,
-        in workspaceId: WorkspaceDescriptor.ID,
-        motion: MotionSnapshot,
-        state: ViewportState,
-        gaps: CGFloat,
-        workingFrame: CGRect,
-        orientation: Monitor.Orientation
+        context: NiriInteractionContext,
+        state: ViewportState
     ) {
-        let cols = columns(in: workspaceId)
+        let cols = columns(in: context.workspaceId)
         guard addedIdx >= 0, addedIdx < cols.count else { return }
 
         let addedCol = cols[addedIdx]
         let activeIdx = state.activeColumnIndex
 
-        let primarySpan: CGFloat
-        switch orientation {
-        case .horizontal:
-            if addedCol.cachedWidth <= 0 {
-                addedCol.resolveAndCacheWidth(
-                    workingAreaWidth: workingFrame.width,
-                    gaps: gaps,
-                    contentInset: tabContentInset(for: addedCol)
-                )
-            }
-            primarySpan = addedCol.cachedWidth
-        case .vertical:
-            if addedCol.cachedHeight <= 0 {
-                addedCol.resolveAndCacheHeight(workingAreaHeight: workingFrame.height, gaps: gaps)
-            }
-            primarySpan = addedCol.cachedHeight
-        }
+        let primarySpan = addedColumnSpan(addedCol, context: context)
 
-        guard motion.animationsEnabled else {
-            for col in cols {
-                col.animateMoveFrom(
-                    displacement: .zero,
-                    clock: animationClock,
-                    config: windowMovementAnimationConfig,
-                    displayRefreshRate: displayRefreshRate(in: workspaceId),
-                    animated: false
-                )
-            }
+        guard context.motion.animationsEnabled else {
+            resetColumnMoveAnimations(cols, in: context.workspaceId)
             return
         }
 
-        let offset = primarySpan + gaps
+        let offset = primarySpan + context.gaps
 
+        let animatedColumns: ArraySlice<NiriContainer>
+        let displacement: CGFloat
         if activeIdx <= addedIdx {
-            for col in cols[(addedIdx + 1)...] {
-                if !col.offsetMoveAnimCurrent(-offset, orientation: orientation) {
-                    let displacement = switch orientation {
-                    case .horizontal: CGPoint(x: -offset, y: 0)
-                    case .vertical: CGPoint(x: 0, y: -offset)
-                    }
-                    col.animateMoveFrom(
-                        displacement: displacement,
-                        clock: animationClock,
-                        config: windowMovementAnimationConfig,
-                        displayRefreshRate: displayRefreshRate(in: workspaceId),
-                        animated: motion.animationsEnabled
-                    )
-                }
-            }
+            animatedColumns = cols[(addedIdx + 1)...]
+            displacement = -offset
         } else {
-            for col in cols[..<addedIdx] {
-                if !col.offsetMoveAnimCurrent(offset, orientation: orientation) {
-                    let displacement = switch orientation {
-                    case .horizontal: CGPoint(x: offset, y: 0)
-                    case .vertical: CGPoint(x: 0, y: offset)
-                    }
-                    col.animateMoveFrom(
-                        displacement: displacement,
-                        clock: animationClock,
-                        config: windowMovementAnimationConfig,
-                        displayRefreshRate: displayRefreshRate(in: workspaceId),
-                        animated: motion.animationsEnabled
-                    )
-                }
+            animatedColumns = cols[..<addedIdx]
+            displacement = offset
+        }
+        for col in consume animatedColumns where !col.offsetMoveAnimCurrent(
+            displacement,
+            orientation: context.orientation
+        ) {
+            let movement = switch context.orientation {
+            case .horizontal: CGPoint(x: displacement, y: 0)
+            case .vertical: CGPoint(x: 0, y: displacement)
             }
+            col.animateMoveFrom(
+                displacement: movement,
+                clock: animationClock,
+                config: windowMovementAnimationConfig,
+                displayRefreshRate: displayRefreshRate(in: context.workspaceId),
+                animated: context.motion.animationsEnabled
+            )
+        }
+    }
+
+    private func addedColumnSpan(_ addedCol: NiriContainer, context: NiriInteractionContext) -> CGFloat {
+        switch context.orientation {
+        case .horizontal:
+            if addedCol.cachedWidth <= 0 {
+                addedCol.resolveAndCacheWidth(
+                    workingAreaWidth: context.workingFrame.width,
+                    gaps: context.gaps,
+                    contentInset: tabContentInset(for: addedCol)
+                )
+            }
+            return addedCol.cachedWidth
+        case .vertical:
+            if addedCol.cachedHeight <= 0 {
+                addedCol.resolveAndCacheHeight(workingAreaHeight: context.workingFrame.height, gaps: context.gaps)
+            }
+            return addedCol.cachedHeight
+        }
+    }
+
+    private func resetColumnMoveAnimations(_ columns: [NiriContainer], in workspaceId: WorkspaceDescriptor.ID) {
+        for col in columns {
+            col.animateMoveFrom(
+                displacement: .zero,
+                clock: animationClock,
+                config: windowMovementAnimationConfig,
+                displayRefreshRate: displayRefreshRate(in: workspaceId),
+                animated: false
+            )
         }
     }
 
@@ -256,6 +220,7 @@ extension NiriLayoutEngine {
         animationTime: TimeInterval? = nil,
         viewOffsetOverride: CGFloat? = nil,
         settledVisibilityOffset: CGFloat? = nil,
+        isSettled: Bool = false,
         excludedTokens: Set<WindowToken>? = nil
     ) -> LayoutResult {
         let area = workingArea ?? WorkingAreaContext(
@@ -283,6 +248,7 @@ extension NiriLayoutEngine {
             hiddenPlacementMonitors: hiddenPlacementMonitors,
             viewOffsetOverride: viewOffsetOverride,
             settledVisibilityOffset: settledVisibilityOffset,
+            isSettled: isSettled,
             excludedTokens: excludedTokens
         )
     }
@@ -296,10 +262,11 @@ extension NiriLayoutEngine {
         animationTime: TimeInterval? = nil,
         viewOffsetOverride: CGFloat? = nil,
         settledVisibilityOffset: CGFloat? = nil,
+        isSettled: Bool = false,
         excludedTokens: Set<WindowToken>? = nil
     ) -> (frames: [WindowToken: CGRect], hiddenHandles: [WindowToken: HideSide]) {
-        framePool.removeAll(keepingCapacity: true)
-        hiddenPool.removeAll(keepingCapacity: true)
+        layoutPool.frames.removeAll(keepingCapacity: true)
+        layoutPool.hiddenHandles.removeAll(keepingCapacity: true)
 
         let area = workingArea ?? WorkingAreaContext(
             workingFrame: monitor.visibleFrame,
@@ -313,25 +280,20 @@ extension NiriLayoutEngine {
         let orientation = self.monitor(for: monitor.id)?.orientation ?? monitor.autoOrientation
 
         calculateLayoutInto(
-            frames: &framePool,
-            hiddenHandles: &hiddenPool,
+            result: &layoutPool,
             state: state,
             workspaceId: workspaceId,
-            monitorFrame: monitor.visibleFrame,
-            screenFrame: monitor.frame,
-            gaps: gaps.asTuple,
-            scale: area.scale,
-            workingArea: area,
-            orientation: orientation,
+            geometry: NiriLayoutGeometry(workingArea: area, gaps: gaps, orientation: orientation),
             animationTime: animationTime,
             hiddenPlacementMonitor: hiddenPlacementMonitor,
             hiddenPlacementMonitors: hiddenPlacementMonitors,
             viewOffsetOverride: viewOffsetOverride,
             settledVisibilityOffset: settledVisibilityOffset,
+            isSettled: isSettled,
             excludedTokens: excludedTokens
         )
 
-        return (framePool, hiddenPool)
+        return (layoutPool.frames, layoutPool.hiddenHandles)
     }
 
     func captureWindowFrames(
@@ -393,10 +355,8 @@ extension NiriLayoutEngine {
     func tickAllWindowAnimations(in workspaceId: WorkspaceDescriptor.ID, at time: TimeInterval) -> Bool {
         guard let root = root(for: workspaceId) else { return false }
         var anyRunning = false
-        for window in root.allWindows {
-            if window.tickMoveAnimations(at: time) {
-                anyRunning = true
-            }
+        for window in root.allWindows where window.tickMoveAnimations(at: time) {
+            anyRunning = true
         }
         return anyRunning
     }

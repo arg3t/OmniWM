@@ -32,12 +32,23 @@ let package = Package(
             name: "OmniWMIPC",
             path: "Sources/OmniWMIPC",
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         ),
         .target(
             name: "OmniWMMenuBarAssertion",
-            path: "Sources/OmniWMMenuBarAssertion"
+            path: "Sources/OmniWMMenuBarAssertion",
+            cSettings: [
+                .treatAllWarnings(as: .error)
+            ]
+        ),
+        .target(
+            name: "OmniWMLayerCorners",
+            path: "Sources/OmniWMLayerCorners",
+            cSettings: [
+                .treatAllWarnings(as: .error)
+            ]
         ),
         .target(
             name: "OmniWM",
@@ -45,6 +56,7 @@ let package = Package(
                 "GhosttyKit",
                 "OmniWMIPC",
                 "OmniWMMenuBarAssertion",
+                "OmniWMLayerCorners",
                 .product(name: "TOML", package: "swift-toml")
             ],
             path: "Sources/OmniWM",
@@ -54,6 +66,7 @@ let package = Package(
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error),
                 .interoperabilityMode(.C),
                 .unsafeFlags(["-Xfrontend", "-disable-autolink-framework", "-Xfrontend", "FoundationModels"])
             ],
@@ -76,26 +89,34 @@ let package = Package(
             dependencies: ["OmniWM"],
             path: "Sources/OmniWMApp",
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         ),
         .executableTarget(
             name: "OmniWMCtl",
             dependencies: ["OmniWMIPC"],
             path: "Sources/OmniWMCtl",
+            resources: [
+                .embedInCode("Completions/completion.zsh"),
+                .embedInCode("Completions/completion.bash"),
+                .embedInCode("Completions/completion.fish")
+            ],
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         ),
         .testTarget(
             name: "OmniWMTests",
-            dependencies: ["OmniWM", "OmniWMCtl"],
+            dependencies: ["OmniWM", "OmniWMCtl", "OmniWMLayerCorners"],
             path: "Tests/OmniWMTests",
             resources: [
                 .copy("Fixtures")
             ],
             swiftSettings: [
-                .swiftLanguageMode(.v6)
+                .swiftLanguageMode(.v6),
+                .treatAllWarnings(as: .error)
             ]
         )
     ]

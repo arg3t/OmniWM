@@ -22,8 +22,8 @@ final class IPCProtocolEnvelopeTests: XCTestCase {
         """.utf8)
     }
 
-    func testCurrentProtocolVersionIsFourteen() {
-        XCTAssertEqual(OmniWMIPCProtocol.version, 14)
+    func testCurrentProtocolVersionIsFifteen() {
+        XCTAssertEqual(OmniWMIPCProtocol.version, 15)
     }
 
     func testScratchpadCommandDecodesLiteralScratchpadIndexField() throws {
@@ -31,7 +31,7 @@ final class IPCProtocolEnvelopeTests: XCTestCase {
 
         XCTAssertEqual(
             try JSONDecoder().decode(IPCCommandRequest.self, from: data),
-            .scratchpadAssign(index: 4)
+            .scratchpad(.assign(index: 4))
         )
     }
 
@@ -39,7 +39,7 @@ final class IPCProtocolEnvelopeTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
 
-        let data = try encoder.encode(IPCCommandRequest.scratchpadToggle(index: 10))
+        let data = try encoder.encode(IPCCommandRequest.scratchpad(.toggle(index: 10)))
 
         XCTAssertEqual(
             String(decoding: data, as: UTF8.self),
@@ -233,6 +233,32 @@ final class IPCProtocolEnvelopeTests: XCTestCase {
             if result == -1 { throw ConnectionTestError.responseIOFailed(errno) }
             throw ConnectionTestError.responseClosed
         }
+    }
+
+    func testVersionResultCarriesTheBuildFingerprintOnTheWire() throws {
+        let result = IPCVersionResult(
+            protocolVersion: 15,
+            appVersion: "0.6.5",
+            gitHash: "5a82c1f5",
+            buildConfiguration: "release",
+            executableSHA256: String(repeating: "ab", count: 32)
+        )
+
+        let encoded = try IPCWire.encodeResponseLine(
+            .success(id: "version", kind: .version, result: IPCResult(version: result))
+        )
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let payload = try XCTUnwrap((object["result"] as? [String: Any])?["payload"] as? [String: Any])
+        XCTAssertEqual(payload["gitHash"] as? String, "5a82c1f5")
+        XCTAssertEqual(payload["buildConfiguration"] as? String, "release")
+        XCTAssertEqual(payload["executableSHA256"] as? String, String(repeating: "ab", count: 32))
+
+        let decoded = try IPCWire.decodeResponse(from: encoded)
+        guard case let .version(roundTripped) = try XCTUnwrap(decoded.result).payload else {
+            return XCTFail("Expected a version payload")
+        }
+        XCTAssertEqual(roundTripped, result)
+        XCTAssertNil(IPCVersionResult(appVersion: nil).executableSHA256)
     }
 
     private func protocolVersion(in response: IPCResponse) -> Int? {

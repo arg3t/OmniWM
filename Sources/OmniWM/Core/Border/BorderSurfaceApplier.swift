@@ -6,7 +6,6 @@ import Foundation
 
 struct BorderSurfaceApplyResult: Equatable {
     let didApply: Bool
-    let needsCornerRadiiRetry: Bool
     let needsWindowLevelRetry: Bool
 }
 
@@ -23,11 +22,6 @@ final class BorderSurfaceApplier {
         let phase: CornerRetryPhase
     }
 
-    private struct CornerResolution {
-        let radii: WindowCornerRadii
-        let needsRetry: Bool
-    }
-
     private struct CachedCornerSample {
         let token: WindowToken
         let sample: WindowCornerSample
@@ -39,20 +33,26 @@ final class BorderSurfaceApplier {
     private var cornerTargetToken: WindowToken?
     private var cachedCornerSample: CachedCornerSample?
     private var cornerRetryState: CornerRetryState?
+    private var cornerDesiredSize: CGSize?
+    private var cornerQueryGeneration: UInt64 = 0
+    private var cornerQueryTask: Task<Void, Never>?
+    private var wantsCornerQuery = false
     private let borderWindowOperations: BorderWindow.Operations
-    private let cornerSampleProvider: @MainActor (Int) -> WindowCornerSample?
+    private let cornerSampleProvider: @MainActor (WindowToken) async throws -> WindowCornerSample?
     private let surfaceCoordinator = SurfaceCoordinator.shared
     private var registeredSurfaceWindowNumber: Int?
     private let defaultCornerRadii = WindowCornerRadii(uniform: 9.0)
     private let surfaceID = "border-surface"
     private var screenParametersObserver: NSObjectProtocol?
     private var scaleInvalidated = false
+    var onWindowLevelResolved: (@MainActor () -> Void)?
     var onDisplayScaleInvalidated: (@MainActor () -> Void)?
+    var onCornerSampleResolved: (@MainActor () -> Void)?
 
     init(
         borderWindowOperations: BorderWindow.Operations = .live,
-        cornerSampleProvider: @escaping @MainActor (Int) -> WindowCornerSample? = {
-            SkyLight.shared.cornerSample(forWindowId: $0)
+        cornerSampleProvider: @escaping @MainActor (WindowToken) async throws -> WindowCornerSample? = {
+            try await SkyLight.shared.cornerSampleDeferred(for: $0)
         }
     ) {
         self.borderWindowOperations = borderWindowOperations
@@ -90,7 +90,6 @@ final class BorderSurfaceApplier {
             hide()
             return BorderSurfaceApplyResult(
                 didApply: true,
-                needsCornerRadiiRetry: false,
                 needsWindowLevelRetry: false
             )
         }
@@ -99,32 +98,20 @@ final class BorderSurfaceApplier {
         BorderOpMetricsRecorder.shared.noteApply()
         updateCornerTarget(desired.token)
 
-        if borderWindow == nil {
-            borderWindow = BorderWindow(config: desired.config, operations: borderWindowOperations)
-        } else {
-            borderWindow?.updateConfig(desired.config)
-        }
+        configureBorderWindow(desired.config)
 
-        let cornerResolution = resolvedCornerRadii(
+        let cornerRadii = resolvedCornerRadii(
             for: desired.token,
             desiredSize: desired.frame.size,
             refresh: refreshCornerRadii
         )
-        if let applied,
-           !scaleInvalidated,
-           borderWindow?.needsWindowLevelRetry != true,
-           applied.token == desired.token,
-           applied.config == desired.config,
-           appliedCornerRadii == cornerResolution.radii,
-           desired.frame.approximatelyEqual(to: applied.frame, tolerance: FrameTolerance.frameWrite)
-        {
+        if canReuseAppliedBorder(desired, cornerRadii: cornerRadii) {
             BorderOpMetricsRecorder.shared.noteShortCircuit()
             if forceOrdering {
                 borderWindow?.reorder(relativeTo: desired.token)
             }
             return BorderSurfaceApplyResult(
                 didApply: true,
-                needsCornerRadiiRetry: cornerResolution.needsRetry,
                 needsWindowLevelRetry: borderWindow?.needsWindowLevelRetry == true
             )
         }
@@ -132,7 +119,7 @@ final class BorderSurfaceApplier {
         guard borderWindow?.update(
             frame: desired.frame,
             targetToken: desired.token,
-            cornerRadii: cornerResolution.radii,
+            cornerRadii: cornerRadii,
             forceOrdering: forceOrdering
         ) == true else {
             applied = nil
@@ -141,19 +128,39 @@ final class BorderSurfaceApplier {
             unregisterSurface()
             return BorderSurfaceApplyResult(
                 didApply: false,
-                needsCornerRadiiRetry: false,
                 needsWindowLevelRetry: false
             )
         }
         scaleInvalidated = false
         applied = desired
-        appliedCornerRadii = cornerResolution.radii
+        appliedCornerRadii = cornerRadii
         syncSurfaceRegistration()
         return BorderSurfaceApplyResult(
             didApply: true,
-            needsCornerRadiiRetry: cornerResolution.needsRetry,
             needsWindowLevelRetry: borderWindow?.needsWindowLevelRetry == true
         )
+    }
+
+    private func configureBorderWindow(_ config: BorderConfig) {
+        if borderWindow == nil {
+            borderWindow = BorderWindow(config: config, operations: borderWindowOperations)
+            borderWindow?.onWindowLevelResolved = { [weak self] in
+                self?.onWindowLevelResolved?()
+            }
+        } else {
+            borderWindow?.updateConfig(config)
+        }
+    }
+
+    private func canReuseAppliedBorder(_ desired: DesiredBorderSurface, cornerRadii: WindowCornerRadii) -> Bool {
+        guard let applied else { return false }
+        return !scaleInvalidated
+            && borderWindow?.needsWindowLevelRetry != true
+            && borderWindow?.hasDeferredLevelUpdate != true
+            && applied.token == desired.token
+            && applied.config == desired.config
+            && appliedCornerRadii == cornerRadii
+            && desired.frame.approximatelyEqual(to: applied.frame, tolerance: FrameTolerance.frameWrite)
     }
 
     func cleanup() {
@@ -181,52 +188,71 @@ final class BorderSurfaceApplier {
         for token: WindowToken,
         desiredSize: CGSize,
         refresh: Bool
-    ) -> CornerResolution {
+    ) -> WindowCornerRadii {
+        if cornerDesiredSize.map({ $0.isWithinFrameTolerance(of: desiredSize) }) != true {
+            cornerQueryGeneration &+= 1
+            cornerQueryTask?.cancel()
+            cornerDesiredSize = desiredSize
+        }
+        wantsCornerQuery = false
         if let cachedCornerSample, cachedCornerSample.token == token {
-            if !refresh || sizesMatch(cachedCornerSample.sample.observedSize, desiredSize) {
+            if !refresh || cachedCornerSample.sample.observedSize.isWithinFrameTolerance(of: desiredSize) {
                 BorderOpMetricsRecorder.shared.noteCornerRadiusHit()
                 if refresh {
                     cornerRetryState = nil
                 }
-                return CornerResolution(radii: cachedCornerSample.sample.radii, needsRetry: false)
+                return cachedCornerSample.sample.radii
             }
         }
-
-        guard refresh else {
-            return CornerResolution(radii: fallbackCornerRadii(for: token), needsRetry: false)
+        guard refresh, !retryIsExhausted(for: token, desiredSize: desiredSize) else {
+            return fallbackCornerRadii(for: token)
         }
-
-        if retryIsExhausted(for: token, desiredSize: desiredSize) {
-            return CornerResolution(radii: fallbackCornerRadii(for: token), needsRetry: false)
-        }
-
-        BorderOpMetricsRecorder.shared.noteCornerRadiusQuery()
-        if let providedSample = cornerSampleProvider(token.windowId), validSize(providedSample.observedSize) {
-            let sample = WindowCornerSample(
-                radii: providedSample.radii.nonnegative,
-                observedSize: providedSample.observedSize,
-                source: providedSample.source
-            )
-            if sizesMatch(sample.observedSize, desiredSize) {
-                cachedCornerSample = CachedCornerSample(token: token, sample: sample)
-                cornerRetryState = nil
-                return CornerResolution(radii: sample.radii, needsRetry: false)
-            }
-            return failedCornerResolution(for: token, desiredSize: desiredSize)
-        }
-
-        return failedCornerResolution(for: token, desiredSize: desiredSize)
+        wantsCornerQuery = true
+        startCornerQueryIfNeeded()
+        return fallbackCornerRadii(for: token)
     }
 
-    private func failedCornerResolution(for token: WindowToken, desiredSize: CGSize) -> CornerResolution {
-        let fallback = fallbackCornerRadii(for: token)
+    private func startCornerQueryIfNeeded() {
+        guard wantsCornerQuery, cornerQueryTask == nil,
+              let token = cornerTargetToken,
+              let desiredSize = cornerDesiredSize
+        else { return }
+        wantsCornerQuery = false
+        let generation = cornerQueryGeneration
+        let provider = cornerSampleProvider
+        BorderOpMetricsRecorder.shared.noteCornerRadiusQuery()
+        cornerQueryTask = Task { [weak self] in
+            let sample = try? await provider(token)
+            guard let self else { return }
+            cornerQueryTask = nil
+            guard generation == cornerQueryGeneration, cornerTargetToken == token,
+                  cornerDesiredSize.map({ $0.isWithinFrameTolerance(of: desiredSize) }) == true
+            else {
+                startCornerQueryIfNeeded()
+                return
+            }
+            wantsCornerQuery = false
+            if let sample, sample.observedSize.hasFinitePositiveDimensions(),
+               sample.observedSize.isWithinFrameTolerance(of: desiredSize)
+            {
+                cachedCornerSample = CachedCornerSample(token: token, sample: WindowCornerSample(
+                    radii: sample.radii.nonnegative,
+                    observedSize: sample.observedSize,
+                    source: sample.source
+                ))
+                cornerRetryState = nil
+                onCornerSampleResolved?()
+            } else if recordCornerFailure(for: token, desiredSize: desiredSize) {
+                onCornerSampleResolved?()
+            }
+        }
+    }
+
+    private func recordCornerFailure(for token: WindowToken, desiredSize: CGSize) -> Bool {
         if cachedCornerSample?.token != token {
             FallbackFiringRecorder.shared.note(.skylight, "cornerRadiusDefault")
         }
-        return CornerResolution(
-            radii: fallback,
-            needsRetry: needsAutomaticRetry(for: token, desiredSize: desiredSize)
-        )
+        return needsAutomaticRetry(for: token, desiredSize: desiredSize)
     }
 
     private func updateCornerTarget(_ token: WindowToken) {
@@ -243,7 +269,7 @@ final class BorderSurfaceApplier {
     private func needsAutomaticRetry(for token: WindowToken, desiredSize: CGSize) -> Bool {
         if let cornerRetryState,
            cornerRetryState.token == token,
-           sizesMatch(cornerRetryState.desiredSize, desiredSize)
+           cornerRetryState.desiredSize.isWithinFrameTolerance(of: desiredSize)
         {
             switch cornerRetryState.phase {
             case .scheduled:
@@ -264,7 +290,7 @@ final class BorderSurfaceApplier {
     private func retryIsExhausted(for token: WindowToken, desiredSize: CGSize) -> Bool {
         guard let cornerRetryState,
               cornerRetryState.token == token,
-              sizesMatch(cornerRetryState.desiredSize, desiredSize)
+              cornerRetryState.desiredSize.isWithinFrameTolerance(of: desiredSize)
         else {
             return false
         }
@@ -272,18 +298,13 @@ final class BorderSurfaceApplier {
     }
 
     private func clearCornerState() {
+        cornerQueryGeneration &+= 1
+        cornerQueryTask?.cancel()
+        cornerDesiredSize = nil
+        wantsCornerQuery = false
         cornerTargetToken = nil
         cachedCornerSample = nil
         cornerRetryState = nil
-    }
-
-    private func sizesMatch(_ lhs: CGSize, _ rhs: CGSize) -> Bool {
-        abs(lhs.width - rhs.width) <= FrameTolerance.frameWrite
-            && abs(lhs.height - rhs.height) <= FrameTolerance.frameWrite
-    }
-
-    private func validSize(_ size: CGSize) -> Bool {
-        size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
     }
 
     private func syncSurfaceRegistration() {

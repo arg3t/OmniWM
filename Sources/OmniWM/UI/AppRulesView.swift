@@ -109,7 +109,7 @@ struct AppRulesView: View {
     }
 
     private var workspaceNames: [String] {
-        settings.workspaceConfigurations.map(\.name)
+        settings.workspaces.configurations.map(\.name)
     }
 
     private var isSearching: Bool {
@@ -257,7 +257,7 @@ struct AppRuleSidebarRow: View {
             RuleBadge(text: "WS", color: .green, accessibilityLabel: "Assigned to workspace \(workspace)")
         }
         if let width = rule.validInitialContainerPrimarySpan {
-            let percent = AppRuleInitialContainerPrimarySpanPercent.displayText(for: width)
+            let percent = AppRulePrimarySpanPercent.displayText(for: width)
             RuleBadge(
                 text: "Primary \(percent)%",
                 color: .indigo,

@@ -314,7 +314,7 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
             displayContext: context
         )
 
-        let snapshot = NativeFullscreenPlaceholderDiagnosticsSnapshot.capture(fixture.controller)
+        let snapshot = FullscreenPlaceholderDiagnosticsSnapshot.capture(fixture.controller)
         let panel = try XCTUnwrap(snapshot.panels.first)
         let report = snapshot.formatted()
         let surfaceId = "native-fullscreen-placeholder-\(fixture.token.pid)-\(fixture.token.windowId)"
@@ -383,7 +383,7 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
         )
         fixture.controller.surfaceReconciler.reconcileNow()
 
-        let report = NativeFullscreenPlaceholderDiagnosticsSnapshot.capture(fixture.controller).formatted()
+        let report = FullscreenPlaceholderDiagnosticsSnapshot.capture(fixture.controller).formatted()
 
         XCTAssertTrue(report.contains("original=982001:982101 resolution=slot_token_mismatch_retained"))
         XCTAssertTrue(report.contains("record current=982001:982102"))
@@ -413,6 +413,22 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
         XCTAssertTrue(excluded.captureSummary.contains("exclusionOutcome=verified"))
         XCTAssertTrue(included.captureSummary.contains("skyLightExcluded=false"))
         XCTAssertTrue(included.captureSummary.contains("exclusionOutcome=failed"))
+    }
+
+    func testPanelTokenMismatchPrecedesPresentationFailures() {
+        let panel = panelDiagnostics(skyLightCaptureExcluded: nil)
+        XCTAssertEqual(
+            panel.presentationReason(expectedToken: WindowToken(pid: 1, windowId: 99)),
+            "panel-token-mismatch"
+        )
+        XCTAssertEqual(
+            panel.presentationReason(expectedToken: WindowToken(pid: 99, windowId: 2)),
+            "panel-token-mismatch"
+        )
+        XCTAssertEqual(
+            panel.presentationReason(expectedToken: WindowToken(pid: 1, windowId: 2)),
+            "panel-descriptor-hidden"
+        )
     }
 
     func testCaptureExclusionOutcomePreservesTriStateVerification() {
@@ -450,9 +466,9 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
             selected: false,
             visible: true
         )
-        let snapshot = NativeFullscreenPlaceholderDiagnosticsSnapshot(
+        let snapshot = FullscreenPlaceholderDiagnosticsSnapshot(
             servicesStarted: true,
-            lifecycle: NativeFullscreenLifecycleDiagnosticsSnapshot(
+            lifecycle: FullscreenLifecycleDiagnosticsSnapshot(
                 records: [
                     .init(
                         originalToken: token,
@@ -475,7 +491,7 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
                 activeFocusOwnerToken: nil,
                 renderableFocusToken: nil
             ),
-            surface: NativeFullscreenSurfaceDiagnosticsSnapshot(
+            surface: FullscreenSurfaceDiagnosticsSnapshot(
                 descriptors: [descriptor],
                 acceptedProjections: [],
                 acceptedSlots: [],
@@ -531,9 +547,9 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
             selected: false,
             visible: false
         )
-        let snapshot = NativeFullscreenPlaceholderDiagnosticsSnapshot(
+        let snapshot = FullscreenPlaceholderDiagnosticsSnapshot(
             servicesStarted: true,
-            lifecycle: NativeFullscreenLifecycleDiagnosticsSnapshot(
+            lifecycle: FullscreenLifecycleDiagnosticsSnapshot(
                 records: [
                     .init(
                         originalToken: originalToken,
@@ -556,7 +572,7 @@ final class NativeFullscreenPlaceholderDiagnosticsTests: XCTestCase {
                 activeFocusOwnerToken: nil,
                 renderableFocusToken: nil
             ),
-            surface: NativeFullscreenSurfaceDiagnosticsSnapshot(
+            surface: FullscreenSurfaceDiagnosticsSnapshot(
                 descriptors: [descriptor],
                 acceptedProjections: [],
                 acceptedSlots: [],

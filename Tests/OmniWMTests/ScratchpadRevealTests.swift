@@ -129,7 +129,7 @@ final class ScratchpadRevealTests: XCTestCase {
             fixture.controller.workspaceManager.workspaceId(for: "2", createIfMissing: true)
         )
         _ = fixture.controller.workspaceManager.focusWorkspace(named: "2")
-        fixture.controller.rehomeRevealedScratchpad(activeWorkspaceIds: [second])
+        fixture.controller.scratchpadStacking.rehomeRevealedScratchpad(activeWorkspaceIds: [second])
 
         XCTAssertEqual(fixture.controller.workspaceManager.workspace(for: token), second)
     }
@@ -144,7 +144,7 @@ final class ScratchpadRevealTests: XCTestCase {
             fixture.controller.workspaceManager.workspaceId(for: "2", createIfMissing: true)
         )
         _ = fixture.controller.workspaceManager.focusWorkspace(named: "2")
-        fixture.controller.rehomeRevealedScratchpad(activeWorkspaceIds: [second])
+        fixture.controller.scratchpadStacking.rehomeRevealedScratchpad(activeWorkspaceIds: [second])
 
         XCTAssertEqual(fixture.controller.workspaceManager.workspace(for: token), parkedWorkspace)
     }
@@ -180,12 +180,12 @@ final class ScratchpadRevealTests: XCTestCase {
             in: fixture
         )
         XCTAssertEqual(fixture.focusRecorder.focusedWindowIds, [UInt32(first.windowId)])
-        fixture.controller.noteScratchpadStackingAppActivation(
+        fixture.controller.scratchpadStacking.noteScratchpadStackingAppActivation(
             pid: second.pid,
             source: .workspaceDidActivateApplication
         )
         XCTAssertEqual(fixture.focusRecorder.focusedWindowIds, [UInt32(first.windowId)])
-        fixture.controller.noteScratchpadStackingAppActivation(
+        fixture.controller.scratchpadStacking.noteScratchpadStackingAppActivation(
             pid: first.pid,
             source: .workspaceDidActivateApplication
         )
@@ -194,7 +194,7 @@ final class ScratchpadRevealTests: XCTestCase {
             [UInt32(first.windowId), UInt32(second.windowId)]
         )
         XCTAssertEqual(fixture.controller.intentLedger.activeManagedRequest?.origin, .pointerHover)
-        fixture.controller.noteScratchpadStackingAppActivation(
+        fixture.controller.scratchpadStacking.noteScratchpadStackingAppActivation(
             pid: second.pid,
             source: .workspaceDidActivateApplication
         )
@@ -441,9 +441,10 @@ final class ScratchpadRevealTests: XCTestCase {
 
     func testDeferredDwindleGroupFocusAbortsStacking() throws {
         let fixture = try makeFixture()
-        fixture.controller.settings.workspaceConfigurations = fixture.controller.settings.workspaceConfigurations.map {
-            $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
-        }
+        fixture.controller.settings.workspaces.configurations = fixture.controller.settings.workspaces.configurations
+            .map {
+                $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
+            }
         fixture.controller.workspaceManager.applySettings()
         fixture.controller.dwindleLayoutHandler.enableDwindleLayout()
         let engine = try XCTUnwrap(fixture.controller.dwindleEngine)
@@ -522,12 +523,12 @@ final class ScratchpadRevealTests: XCTestCase {
         )
         fixture.controller.reassignManagedWindow(workspaceFocus, to: secondWorkspace)
         _ = fixture.controller.workspaceManager.focusWorkspace(named: "2")
-        fixture.controller.rehomeRevealedScratchpad(activeWorkspaceIds: [secondWorkspace])
+        fixture.controller.scratchpadStacking.rehomeRevealedScratchpad(activeWorkspaceIds: [secondWorkspace])
         fixture.focusRecorder.reset()
 
         fixture.controller.focusWindow(workspaceFocus)
         fixture.focusRecorder.frontmostPID = nil
-        fixture.controller.resumeRehomedScratchpadStackingAfterFocusHandoff()
+        fixture.controller.scratchpadStacking.resumeRehomedScratchpadStackingAfterFocusHandoff()
         XCTAssertEqual(
             fixture.focusRecorder.focusedWindowIds,
             [UInt32(workspaceFocus.windowId)]
@@ -544,7 +545,7 @@ final class ScratchpadRevealTests: XCTestCase {
         )
 
         fixture.focusRecorder.frontmostPID = workspaceFocus.pid
-        fixture.controller.noteScratchpadStackingAppActivation(
+        fixture.controller.scratchpadStacking.noteScratchpadStackingAppActivation(
             pid: workspaceFocus.pid,
             source: .workspaceDidActivateApplication
         )
@@ -791,7 +792,7 @@ final class ScratchpadRevealTests: XCTestCase {
         let entry = try XCTUnwrap(fixture.controller.workspaceManager.entry(for: token))
         let hiddenState = try XCTUnwrap(fixture.controller.workspaceManager.hiddenState(for: token))
         var priorGroupCompletions = 0
-        let priorGroupId = fixture.controller.layoutRefreshController.beginScratchpadRevealGroup(index: 7) { _ in
+        let priorGroupId = fixture.controller.layoutRefreshController.revealGroups.begin(index: 7) { _ in
             priorGroupCompletions += 1
         }
         let transactionId = try XCTUnwrap(
@@ -803,7 +804,7 @@ final class ScratchpadRevealTests: XCTestCase {
                 revealGroupId: priorGroupId
             )
         )
-        fixture.controller.layoutRefreshController.sealScratchpadRevealGroup(priorGroupId)
+        fixture.controller.layoutRefreshController.revealGroups.seal(priorGroupId)
         fixture.focusRecorder.reset()
 
         XCTAssertEqual(fixture.controller.toggleScratchpad(7), .executed)
@@ -1103,7 +1104,7 @@ final class ScratchpadRevealTests: XCTestCase {
             fixture.controller.workspaceManager.workspaceId(for: "3", createIfMissing: true)
         )
         _ = fixture.controller.workspaceManager.focusWorkspace(named: "3")
-        fixture.controller.rehomeRevealedScratchpad(activeWorkspaceIds: [thirdWorkspace])
+        fixture.controller.scratchpadStacking.rehomeRevealedScratchpad(activeWorkspaceIds: [thirdWorkspace])
 
         XCTAssertEqual(fixture.controller.workspaceManager.workspace(for: visible), thirdWorkspace)
         XCTAssertEqual(fixture.controller.workspaceManager.workspace(for: appHidden), thirdWorkspace)
@@ -1225,6 +1226,132 @@ final class ScratchpadRevealTests: XCTestCase {
         try completeReveal(fullscreen, in: fixture)
         XCTAssertNil(fixture.controller.workspaceManager.hiddenState(for: fullscreen))
         XCTAssertEqual(fixture.controller.workspaceManager.scratchpadIndex(for: fullscreen), 5)
+    }
+
+    func testReturningScratchpadMemberToNiriReleasesOnlyThatMember() throws {
+        try verifyReturningScratchpadMemberToLayout(.niri)
+    }
+
+    func testReturningScratchpadMemberToDwindleReleasesOnlyThatMember() throws {
+        try verifyReturningScratchpadMemberToLayout(.dwindle)
+    }
+
+    func testReturningLastRevealedScratchpadMemberToTilingClearsRevealedSlot() throws {
+        try verifyReturningLastScratchpadMemberToTiling(parkBeforeTransition: false)
+    }
+
+    func testDeferredTilingTransitionAfterParkingClearsScratchpadHiding() throws {
+        try verifyReturningLastScratchpadMemberToTiling(parkBeforeTransition: true)
+    }
+
+    private func verifyReturningScratchpadMemberToLayout(_ layout: LayoutType) throws {
+        let fixture = try makeFixture()
+        let controller = fixture.controller
+        let manager = controller.workspaceManager
+        defer {
+            controller.layoutRefreshController.resetState()
+            controller.surfaceReconciler.cleanup()
+            controller.axManager.cleanup()
+        }
+        controller.settings.workspaces.configurations = controller.settings.workspaces.configurations.map {
+            $0.name == "1" ? $0.with(layoutType: layout) : $0
+        }
+        manager.applySettings()
+        if layout == .niri {
+            controller.niriLayoutHandler.enableNiriLayout()
+        } else {
+            controller.dwindleLayoutHandler.enableDwindleLayout()
+        }
+        controller.layoutRefreshController.resetState()
+        let first = addFloatingWindow(pid: 972_001, windowId: 972_101, to: fixture)
+        let second = addFloatingWindow(pid: 972_002, windowId: 972_102, to: fixture)
+        XCTAssertEqual(assign(first, to: 1, in: fixture), .executed)
+        XCTAssertEqual(assign(second, to: 1, in: fixture), .executed)
+        XCTAssertEqual(controller.toggleScratchpad(1), .executed)
+        try completeReveal(first, in: fixture)
+        try completeReveal(second, in: fixture)
+        _ = manager.cancelCurrentManagedFocusRequest()
+        _ = manager.setManagedFocus(first, in: fixture.workspaceId, onMonitor: fixture.monitor.id)
+
+        XCTAssertEqual(controller.toggleFocusedWindowFloating(), .executed)
+        XCTAssertNil(manager.manualLayoutOverride(for: first))
+        XCTAssertEqual(manager.entry(for: first)?.mode, .floating)
+        XCTAssertEqual(manager.scratchpadIndex(for: first), 1)
+        XCTAssertTrue(controller.transitionWindowMode(
+            for: first,
+            to: .tiling,
+            preferredMonitor: fixture.monitor,
+            observedFrame: CGRect(x: 120, y: 80, width: 900, height: 620),
+            allowLiveFrameFallback: false
+        ))
+
+        XCTAssertEqual(manager.entry(for: first)?.mode, .tiling)
+        XCTAssertNil(manager.scratchpadIndex(for: first))
+        XCTAssertNil(manager.hiddenState(for: first))
+        XCTAssertEqual(manager.scratchpadMembers(in: 1), [second])
+        XCTAssertEqual(manager.revealedScratchpadIndex(), 1)
+        if layout == .niri {
+            _ = manager.withBatchedLayoutBuild {
+                controller.niriLayoutHandler.layoutWithNiriEngine(activeWorkspaces: [fixture.workspaceId])
+            }
+            let engine = try XCTUnwrap(controller.niriEngine)
+            let handle = try XCTUnwrap(manager.handle(for: first))
+            XCTAssertNotNil(engine.findNode(for: handle, in: fixture.workspaceId))
+        } else {
+            _ = manager.withBatchedLayoutBuild {
+                controller.dwindleLayoutHandler.layoutWithDwindleEngine(activeWorkspaces: [fixture.workspaceId])
+            }
+            let engine = try XCTUnwrap(controller.dwindleEngine)
+            XCTAssertNotNil(engine.findNode(for: first, in: fixture.workspaceId))
+        }
+
+        XCTAssertEqual(controller.toggleScratchpad(1), .executed)
+        XCTAssertNil(manager.hiddenState(for: first))
+        XCTAssertEqual(manager.hiddenState(for: second)?.isScratchpad, true)
+        XCTAssertEqual(controller.toggleScratchpad(1), .executed)
+        try completeReveal(second, in: fixture)
+        XCTAssertNil(manager.hiddenState(for: first))
+        let destination = try XCTUnwrap(manager.workspaceId(for: "2", createIfMissing: true))
+        _ = manager.focusWorkspace(named: "2")
+        controller.scratchpadStacking.rehomeRevealedScratchpad(activeWorkspaceIds: [destination])
+        XCTAssertEqual(manager.workspace(for: first), fixture.workspaceId)
+        XCTAssertEqual(manager.workspace(for: second), destination)
+    }
+
+    private func verifyReturningLastScratchpadMemberToTiling(parkBeforeTransition: Bool) throws {
+        let fixture = try makeFixture()
+        let controller = fixture.controller
+        let manager = controller.workspaceManager
+        defer {
+            controller.layoutRefreshController.resetState()
+            controller.surfaceReconciler.cleanup()
+            controller.axManager.cleanup()
+        }
+        let token = addFloatingWindow(pid: 972_011, windowId: 972_111, to: fixture)
+        XCTAssertEqual(assign(token, to: 1, in: fixture), .executed)
+        XCTAssertEqual(controller.toggleScratchpad(1), .executed)
+        try completeReveal(token, in: fixture)
+        _ = manager.cancelCurrentManagedFocusRequest()
+        _ = manager.setManagedFocus(token, in: fixture.workspaceId, onMonitor: fixture.monitor.id)
+        XCTAssertEqual(controller.toggleFocusedWindowFloating(), .executed)
+        if parkBeforeTransition {
+            XCTAssertEqual(controller.toggleScratchpad(1), .executed)
+            XCTAssertEqual(manager.hiddenState(for: token)?.isScratchpad, true)
+        }
+
+        XCTAssertTrue(controller.transitionWindowMode(
+            for: token,
+            to: .tiling,
+            preferredMonitor: fixture.monitor,
+            observedFrame: CGRect(x: 120, y: 80, width: 900, height: 620),
+            allowLiveFrameFallback: false
+        ))
+
+        XCTAssertNil(manager.scratchpadIndex(for: token))
+        XCTAssertNil(manager.revealedScratchpadIndex())
+        XCTAssertNil(manager.hiddenState(for: token))
+        XCTAssertTrue(manager.scratchpadMembers(in: 1).isEmpty)
+        XCTAssertEqual(controller.toggleScratchpad(1), .notFound)
     }
 
     private struct Fixture {

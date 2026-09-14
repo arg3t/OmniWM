@@ -1320,12 +1320,14 @@ final class RuntimeArchitectureTests: XCTestCase {
                     peerNode,
                     into: authoritativeColumn,
                     enteringFrom: .right,
-                    in: workspaceId,
-                    motion: .disabled,
-                    state: &viewportState,
-                    workingFrame: monitor.visibleFrame,
-                    gaps: CGFloat(controller.workspaceManager.gaps),
-                    orientation: controller.settings.effectiveOrientation(for: monitor)
+                    context: .init(
+                        workspaceId: workspaceId,
+                        motion: .disabled,
+                        workingFrame: monitor.visibleFrame,
+                        gaps: CGFloat(controller.workspaceManager.gaps),
+                        orientation: controller.settings.monitors.effectiveOrientation(for: monitor)
+                    ),
+                    state: &viewportState
                 ) == true
             )
             authoritativeColumn.displayMode = .tabbed
@@ -1467,7 +1469,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let workspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.setFocusFollowsMouse(true)
-        controller.settings.focusLockModifier = .option
+        controller.settings.focus.lockModifier = .option
         controller.niriLayoutHandler.enableNiriLayout()
         let monitor = try XCTUnwrap(controller.workspaceManager.monitor(for: workspaceId))
         let targetFrame = CGRect(
@@ -1521,7 +1523,7 @@ final class RuntimeArchitectureTests: XCTestCase {
     func testDwindleFocusFollowsMouseDispatchFocusesHoveredWindowImmediately() throws {
         var focusedTokens: [WindowToken] = []
         let settings = Self.settingsStore()
-        settings.workspaceConfigurations = settings.workspaceConfigurations.map {
+        settings.workspaces.configurations = settings.workspaces.configurations.map {
             $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
         }
         let controller = WMController(
@@ -1615,10 +1617,10 @@ final class RuntimeArchitectureTests: XCTestCase {
     func testFocusLockModifierSuppressesDwindleFocusFollowsMouseWhileHeld() throws {
         var focusedTokens: [WindowToken] = []
         let settings = Self.settingsStore()
-        settings.workspaceConfigurations = settings.workspaceConfigurations.map {
+        settings.workspaces.configurations = settings.workspaces.configurations.map {
             $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
         }
-        settings.focusLockModifier = .option
+        settings.focus.lockModifier = .option
         let controller = WMController(
             settings: settings,
             windowFocusOperations: WindowFocusOperations(
@@ -2457,7 +2459,7 @@ final class RuntimeArchitectureTests: XCTestCase {
     @MainActor
     func testStoppedServiceReconcileDoesNotRepopulateWorkspaceBars() {
         let controller = Self.controller()
-        controller.settings.workspaceBarEnabled = true
+        controller.settings.workspaceBar.enabled = true
         controller.hasStartedServices = true
         let world = WorldView(controller: controller)
 
@@ -2485,7 +2487,7 @@ final class RuntimeArchitectureTests: XCTestCase {
     func testAnimationBorderDerivationDropsExternalSurfaceWithoutBoundsQuery() {
         let controller = Self.controller()
         controller.hasStartedServices = true
-        controller.settings.bordersEnabled = true
+        controller.settings.borders.enabled = true
         let token = WindowToken(pid: 765_019, windowId: 765_119)
         _ = controller.workspaceManager.recordExternalFocus(pid: token.pid, windowId: token.windowId)
         let previous = DesiredBorderSurface(
@@ -2494,7 +2496,7 @@ final class RuntimeArchitectureTests: XCTestCase {
             config: BorderConfig.from(settings: controller.settings)
         )
         var boundsQueryCount = 0
-        let world = WorldView(controller: controller, borderFrameResolver: { _ in
+        let world = WorldView(controller: controller, liveBoundsProvider: { _ in
             boundsQueryCount += 1
             return nil
         })
@@ -3061,20 +3063,14 @@ final class RuntimeArchitectureTests: XCTestCase {
         var secondResults: [AXFrameApplyResult] = []
 
         let firstDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: firstFrame,
+            .init(pid: getpid(), window: window, frame: firstFrame),
             isRetry: false
         ) { result in
             firstResults.append(result)
         }
         let firstRequest = try XCTUnwrap(firstDecision.request)
         let secondDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: secondFrame,
+            .init(pid: getpid(), window: window, frame: secondFrame),
             isRetry: false
         ) { result in
             secondResults.append(result)
@@ -3110,22 +3106,24 @@ final class RuntimeArchitectureTests: XCTestCase {
         let ledger = AXFrameApplicationLedger()
         let window = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 10)
         let first = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: CGRect(x: 10, y: 20, width: 300, height: 200),
-            components: .all,
+            .init(
+                pid: getpid(),
+                window: window,
+                frame: CGRect(x: 10, y: 20, width: 300, height: 200),
+                components: .all
+            ),
             isRetry: false,
             terminalObserver: nil
         )
         XCTAssertEqual(try XCTUnwrap(first.request).components, .all)
 
         let second = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: CGRect(x: 40, y: 50, width: 300, height: 200),
-            components: .position,
+            .init(
+                pid: getpid(),
+                window: window,
+                frame: CGRect(x: 40, y: 50, width: 300, height: 200),
+                components: .position
+            ),
             isRetry: false,
             terminalObserver: nil
         )
@@ -3138,22 +3136,24 @@ final class RuntimeArchitectureTests: XCTestCase {
         let ledger = AXFrameApplicationLedger()
         let window = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 10)
         let first = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: CGRect(x: 10, y: 20, width: 300, height: 200),
-            components: .position,
+            .init(
+                pid: getpid(),
+                window: window,
+                frame: CGRect(x: 10, y: 20, width: 300, height: 200),
+                components: .position
+            ),
             isRetry: false,
             terminalObserver: nil
         )
         XCTAssertEqual(try XCTUnwrap(first.request).components, .position)
 
         let second = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: CGRect(x: 10, y: 20, width: 360, height: 240),
-            components: .size,
+            .init(
+                pid: getpid(),
+                window: window,
+                frame: CGRect(x: 10, y: 20, width: 360, height: 240),
+                components: .size
+            ),
             isRetry: false,
             terminalObserver: nil
         )
@@ -3169,11 +3169,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let latestFrame = CGRect(x: 40, y: 50, width: 300, height: 200)
         var terminalResults: [AXFrameApplyResult] = []
         let first = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: firstFrame,
-            components: .all,
+            .init(pid: getpid(), window: window, frame: firstFrame, components: .all),
             isRetry: false,
             verify: true,
             terminalObserver: { terminalResults.append($0) }
@@ -3181,11 +3177,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         XCTAssertNotNil(first.request)
 
         let second = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: latestFrame,
-            components: .position,
+            .init(pid: getpid(), window: window, frame: latestFrame, components: .position),
             isRetry: false,
             verify: false,
             terminalObserver: nil
@@ -3276,16 +3268,38 @@ final class RuntimeArchitectureTests: XCTestCase {
     }
 
     @MainActor
+    func testAnimationFrameChangeRoutesTrustedSizesToPositionOnlyWrites() {
+        let manager = AXManager()
+        let token = WindowToken(pid: 4_733, windowId: 4_734)
+        let frame = CGRect(x: 40, y: 50, width: 300, height: 200)
+        let change = LayoutFrameChange(token: token, frame: frame, forceApply: false)
+
+        let untracked = manager.animationFrameChange(change)
+        XCTAssertEqual(untracked.components, .all)
+        XCTAssertEqual(untracked.frame, frame)
+
+        manager.confirmFrameWrite(for: token.windowId, frame: frame)
+        let translated = manager.animationFrameChange(
+            change.writing(frame.offsetBy(dx: 30, dy: 0), components: .all)
+        )
+        XCTAssertEqual(translated.components, .position)
+        XCTAssertEqual(translated.frame, frame.offsetBy(dx: 30, dy: 0))
+
+        let resized = manager.animationFrameChange(
+            change.writing(frame.insetBy(dx: -20, dy: 0), components: .all)
+        )
+        XCTAssertEqual(resized.components, .all)
+        XCTAssertEqual(resized.frame, frame.insetBy(dx: -20, dy: 0))
+    }
+
+    @MainActor
     func testAXFrameLedgerRekeysPendingRequestBeforeCompletion() throws {
         let ledger = AXFrameApplicationLedger()
         let frame = CGRect(x: 10, y: 20, width: 300, height: 200)
         let window = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 10)
         var results: [AXFrameApplyResult] = []
         let decision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false
         ) { result in
             results.append(result)
@@ -3314,10 +3328,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let rekeyedWindow = AXWindowRef(element: window.element, windowId: 20)
         var results: [AXFrameApplyResult] = []
         let firstDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false
         ) { result in
             results.append(result)
@@ -3341,10 +3352,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         ])
 
         let retryDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 20,
-            expectedWindow: rekeyedWindow,
-            frame: frame,
+            .init(pid: getpid(), window: rekeyedWindow, frame: frame),
             isRetry: true,
             terminalObserver: nil
         )
@@ -3367,10 +3375,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let window = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 10)
         var results: [AXFrameApplyResult] = []
         let firstDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false
         ) { result in
             results.append(result)
@@ -3393,10 +3398,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         ])
 
         let retryDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: true,
             terminalObserver: nil
         )
@@ -3426,10 +3428,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         var firstResults: [AXFrameApplyResult] = []
         var secondResults: [AXFrameApplyResult] = []
         let firstDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false
         ) { result in
             firstResults.append(result)
@@ -3451,10 +3450,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         ])
 
         let secondDecision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false
         ) { result in
             secondResults.append(result)
@@ -3481,10 +3477,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let rekeyedCancelWindow = AXWindowRef(element: cancelWindow.element, windowId: 20)
         var cancelResults: [AXFrameApplyResult] = []
         let cancelDecision = cancelLedger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: cancelWindow,
-            frame: frame,
+            .init(pid: getpid(), window: cancelWindow, frame: frame),
             isRetry: false,
             terminalObserver: { result in
                 cancelResults.append(result)
@@ -3514,10 +3507,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let suppressLedger = AXFrameApplicationLedger()
         let suppressWindow = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 30)
         let suppressDecision = suppressLedger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 30,
-            expectedWindow: suppressWindow,
-            frame: frame,
+            .init(pid: getpid(), window: suppressWindow, frame: frame),
             isRetry: false,
             terminalObserver: nil
         )
@@ -3536,10 +3526,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let cancelWindow = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 10)
         var cancelResults: [AXFrameApplyResult] = []
         let cancelDecision = cancelLedger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: cancelWindow,
-            frame: frame,
+            .init(pid: getpid(), window: cancelWindow, frame: frame),
             isRetry: false,
             terminalObserver: { result in
                 cancelResults.append(result)
@@ -3562,10 +3549,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let suppressLedger = AXFrameApplicationLedger()
         let suppressWindow = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 30)
         let suppressDecision = suppressLedger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 30,
-            expectedWindow: suppressWindow,
-            frame: frame,
+            .init(pid: getpid(), window: suppressWindow, frame: frame),
             isRetry: false,
             terminalObserver: nil
         )
@@ -3579,10 +3563,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let removeWindow = AXWindowRef(element: AXUIElementCreateApplication(getpid()), windowId: 50)
         var removeResults: [AXFrameApplyResult] = []
         let removeDecision = removeLedger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 50,
-            expectedWindow: removeWindow,
-            frame: frame,
+            .init(pid: getpid(), window: removeWindow, frame: frame),
             isRetry: false,
             terminalObserver: { result in
                 removeResults.append(result)
@@ -3611,10 +3592,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let rekeyedWindow = AXWindowRef(element: window.element, windowId: 20)
         var results: [AXFrameApplyResult] = []
         let decision = ledger.prepareFrameApplication(
-            pid: getpid(),
-            windowId: 10,
-            expectedWindow: window,
-            frame: frame,
+            .init(pid: getpid(), window: window, frame: frame),
             isRetry: false,
             terminalObserver: { result in
                 results.append(result)
@@ -3757,7 +3735,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         _ = controller.workspaceManager.beginManagedFocusRequest(token, in: workspaceId, requestId: 7)
         XCTAssertTrue(terminalResults.isEmpty)
 
-        controller.axManager.cancelPendingFrameJobs([(pid, windowId)])
+        controller.axManager.cancelPendingFrameJobs([(pid, windowId)], reason: "test")
         XCTAssertEqual(terminalResults.map(\.writeResult.failureReason), [.cancelled])
     }
 
@@ -3786,7 +3764,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         controller.workspaceManager.setManualLayoutOverride(.forceFloat, for: token)
         XCTAssertTrue(terminalResults.isEmpty)
 
-        controller.axManager.cancelPendingFrameJobs([(pid, windowId)])
+        controller.axManager.cancelPendingFrameJobs([(pid, windowId)], reason: "test")
         XCTAssertEqual(terminalResults.map(\.writeResult.failureReason), [.cancelled])
     }
 
@@ -3824,7 +3802,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         }
         XCTAssertTrue(terminalResults.isEmpty)
 
-        controller.axManager.cancelPendingFrameJobs([(pid, windowId)])
+        controller.axManager.cancelPendingFrameJobs([(pid, windowId)], reason: "test")
         XCTAssertEqual(terminalResults.map(\.writeResult.failureReason), [.cancelled])
     }
 
@@ -4697,11 +4675,15 @@ final class RuntimeArchitectureTests: XCTestCase {
 
         let match = controller.axEventHandler.structuralReplacementMatch(
             token: newToken,
-            bundleId: Self.nativeTabBundleId(pid: newToken.pid),
-            mode: .tiling,
-            facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame),
-            capturedWindowServerInfoByWindowId: [newToken.windowId: newWindowInfo],
-            capturedWindowServerAuthoritativeWindowIds: [oldToken.windowId, newToken.windowId]
+            candidate: .init(
+                bundleId: Self.nativeTabBundleId(pid: newToken.pid),
+                mode: .tiling,
+                facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame)
+            ),
+            capturedInventory: .init(
+                infoByWindowId: [newToken.windowId: newWindowInfo],
+                authoritativeWindowIds: [oldToken.windowId, newToken.windowId]
+            )
         )
 
         XCTAssertEqual(match?.token, oldToken)
@@ -4747,20 +4729,28 @@ final class RuntimeArchitectureTests: XCTestCase {
 
         let match = controller.axEventHandler.structuralReplacementMatch(
             token: newToken,
-            bundleId: Self.nativeTabBundleId(pid: newToken.pid),
-            mode: .tiling,
-            facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame),
-            capturedWindowServerInfoByWindowId: [newToken.windowId: newWindowInfo],
-            capturedWindowServerAuthoritativeWindowIds: [newToken.windowId]
+            candidate: .init(
+                bundleId: Self.nativeTabBundleId(pid: newToken.pid),
+                mode: .tiling,
+                facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame)
+            ),
+            capturedInventory: .init(
+                infoByWindowId: [newToken.windowId: newWindowInfo],
+                authoritativeWindowIds: [newToken.windowId]
+            )
         )
         let pidLimitedMatch = controller.axEventHandler.structuralReplacementMatch(
             token: newToken,
-            bundleId: Self.nativeTabBundleId(pid: newToken.pid),
-            mode: .tiling,
-            facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame),
-            capturedWindowServerInfoByWindowId: [newToken.windowId: newWindowInfo],
-            capturedWindowServerAuthoritativeWindowIds: [oldToken.windowId, newToken.windowId],
-            capturedWindowServerAuthoritativePIDs: []
+            candidate: .init(
+                bundleId: Self.nativeTabBundleId(pid: newToken.pid),
+                mode: .tiling,
+                facts: Self.nativeTabFacts(pid: newToken.pid, windowId: newToken.windowId, frame: frame)
+            ),
+            capturedInventory: .init(
+                infoByWindowId: [newToken.windowId: newWindowInfo],
+                authoritativeWindowIds: [oldToken.windowId, newToken.windowId],
+                authoritativePIDs: []
+            )
         )
 
         XCTAssertNil(match)
@@ -5023,7 +5013,7 @@ final class RuntimeArchitectureTests: XCTestCase {
     @MainActor
     func testBatchedLayoutBuildLeavesDwindlePlansWithoutViewportAndStampsPostBuildSeq() throws {
         let settings = Self.settingsStore()
-        settings.workspaceConfigurations = settings.workspaceConfigurations.map {
+        settings.workspaces.configurations = settings.workspaces.configurations.map {
             $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
         }
         let controller = WMController(
@@ -5062,7 +5052,7 @@ final class RuntimeArchitectureTests: XCTestCase {
     @MainActor
     func testDwindleRelayoutDoesNotReplaceFloatingWorkspaceMRUWithTiledSelection() throws {
         let settings = Self.settingsStore()
-        settings.workspaceConfigurations = settings.workspaceConfigurations.map {
+        settings.workspaces.configurations = settings.workspaces.configurations.map {
             $0.name == "1" ? $0.with(layoutType: .dwindle) : $0
         }
         let controller = WMController(
@@ -5458,12 +5448,14 @@ final class RuntimeArchitectureTests: XCTestCase {
             controller.workspaceManager.withEngineMutationScope(in: workspaceId) {
                 engine.consumeWindowIntoColumn(
                     focusedColumn: engine.columns(in: workspaceId)[1],
-                    in: workspaceId,
-                    motion: .disabled,
-                    state: &state,
-                    workingFrame: monitor.visibleFrame,
-                    gaps: 8,
-                    orientation: .horizontal
+                    context: .init(
+                        workspaceId: workspaceId,
+                        motion: .disabled,
+                        workingFrame: monitor.visibleFrame,
+                        gaps: 8,
+                        orientation: .horizontal
+                    ),
+                    state: &state
                 )
             }
         )
@@ -5533,12 +5525,15 @@ final class RuntimeArchitectureTests: XCTestCase {
         defer { controller.layoutRefreshController.resetState() }
 
         controller.layoutRefreshController.requestWindowRemoval(
-            workspaceId: workspaceId,
-            layoutType: .niri,
-            removedNodeId: NodeId(),
-            removedNiriColumn: true,
-            niriOldFrames: [:],
-            shouldRecoverFocus: false
+            .init(
+                workspaceId: workspaceId,
+                layoutType: .niri,
+                removedNodeId: NodeId(),
+                removedNiriColumn: true,
+                niriOldFrames: [:],
+                shouldRecoverFocus: false,
+                allowsPreferredRecoveryToken: false
+            )
         )
 
         let pending = try XCTUnwrap(controller.layoutRefreshController.layoutState.pendingRefresh)
@@ -5606,12 +5601,14 @@ final class RuntimeArchitectureTests: XCTestCase {
             controller.workspaceManager.withEngineMutationScope(in: ws) {
                 engine.consumeWindowIntoColumn(
                     focusedColumn: targetColumn,
-                    in: ws,
-                    motion: .disabled,
-                    state: &state,
-                    workingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
-                    gaps: CGFloat(controller.workspaceManager.gaps),
-                    orientation: .horizontal
+                    context: .init(
+                        workspaceId: ws,
+                        motion: .disabled,
+                        workingFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                        gaps: CGFloat(controller.workspaceManager.gaps),
+                        orientation: .horizontal
+                    ),
+                    state: &state
                 )
             }
         )
@@ -6881,7 +6878,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         _ = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = false
+        controller.settings.focus.moveCrossesMonitorAtEdge = false
 
         let engine = try XCTUnwrap(controller.niriEngine)
         let token = controller.workspaceManager.addWindow(
@@ -6907,7 +6904,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let wsId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
 
         let engine = try XCTUnwrap(controller.niriEngine)
         let leftToken = controller.workspaceManager.addWindow(
@@ -6963,7 +6960,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let rightWs = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
 
         let engine = try XCTUnwrap(controller.niriEngine)
         let existingToken = controller.workspaceManager.addWindow(
@@ -6993,7 +6990,7 @@ final class RuntimeArchitectureTests: XCTestCase {
 
         controller.motionPolicy.animationsEnabled = false
         XCTAssertEqual(
-            controller.commandHandler.performCommand(.setContainerPrimarySpan(.setProportion(50))),
+            controller.commandHandler.performCommand(.sizing(.setContainerPrimarySpan(.setProportion(50)))),
             .executed
         )
         let sourceColumn = try XCTUnwrap(engine.findColumn(containing: node, in: leftWs))
@@ -7034,7 +7031,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let rightWs = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
 
         let engine = try XCTUnwrap(controller.niriEngine)
         let token = controller.workspaceManager.addWindow(
@@ -7051,7 +7048,7 @@ final class RuntimeArchitectureTests: XCTestCase {
 
         controller.motionPolicy.animationsEnabled = false
         XCTAssertEqual(
-            controller.commandHandler.performCommand(.setContainerPrimarySpan(.setProportion(50))),
+            controller.commandHandler.performCommand(.sizing(.setContainerPrimarySpan(.setProportion(50)))),
             .executed
         )
         let sourceColumn = try XCTUnwrap(engine.findColumn(containing: node, in: leftWs))
@@ -7101,7 +7098,7 @@ final class RuntimeArchitectureTests: XCTestCase {
             sourceToken, in: leftWs, onMonitor: leftMonitor.id, activateWorkspaceOnMonitor: true
         )
         XCTAssertEqual(
-            controller.commandHandler.performCommand(.setContainerPrimarySpan(.setProportion(50))),
+            controller.commandHandler.performCommand(.sizing(.setContainerPrimarySpan(.setProportion(50)))),
             .executed
         )
         let sourceColumn = try XCTUnwrap(engine.findColumn(containing: sourceNode, in: leftWs))
@@ -7201,7 +7198,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let ws1 = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         let ws6 = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
         let engine = try XCTUnwrap(controller.niriEngine)
 
         let oneOnLower = controller.workspaceManager.monitor(for: ws1)?.id == lowerMonitor.id
@@ -7279,7 +7276,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let ws1 = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         let ws6 = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
         let engine = try XCTUnwrap(controller.niriEngine)
 
         let oneOnUpper = controller.workspaceManager.monitor(for: ws1)?.id == upperMonitor.id
@@ -7365,7 +7362,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let leftWs = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         let rightWs = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "6", createIfMissing: true))
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = true
+        controller.settings.focus.moveCrossesMonitorAtEdge = true
         let engine = try XCTUnwrap(controller.niriEngine)
 
         var destTokens: [WindowToken] = []
@@ -7430,7 +7427,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let wsId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
         _ = controller.workspaceManager.focusWorkspace(named: "1")
         controller.niriLayoutHandler.enableNiriLayout()
-        controller.settings.moveCrossesMonitorAtEdge = false
+        controller.settings.focus.moveCrossesMonitorAtEdge = false
 
         let engine = try XCTUnwrap(controller.niriEngine)
         engine.isMutationSanctioned = true
@@ -7557,20 +7554,15 @@ final class RuntimeArchitectureTests: XCTestCase {
     ) -> Bool {
         guard let match = handler.structuralReplacementMatch(
             token: token,
-            bundleId: bundleId,
-            mode: mode,
-            facts: facts
+            candidate: .init(bundleId: bundleId, mode: mode, facts: facts)
         ) else {
             return false
         }
         return handler.rekeyStructuralManagedReplacement(
             match: match,
-            token: token,
+            identity: .init(token: token, axRef: axRef),
             windowId: windowId,
-            axRef: axRef,
-            bundleId: bundleId,
-            mode: mode,
-            facts: facts
+            candidate: .init(bundleId: bundleId, mode: mode, facts: facts)
         )
     }
 
@@ -7688,7 +7680,7 @@ final class RuntimeArchitectureTests: XCTestCase {
             file: file,
             line: line
         )
-        controller.settings.updateOrientationSettings(
+        controller.settings.monitors.updateOrientationSettings(
             MonitorOrientationSettings(
                 monitorName: monitor.name,
                 monitorDisplayId: monitor.displayId,

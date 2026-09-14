@@ -1,5 +1,6 @@
 # Build artifacts
 .build/
+__pycache__/
 
 # SwiftPM
 .swiftpm/xcode/xcuserdata/
@@ -30,6 +31,7 @@ Frameworks/
 # Codex
 .codex-home/
 .claude/
+/.agents/
 .tmp/
 .cache/
 .codex-cache/

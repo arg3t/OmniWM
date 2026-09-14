@@ -25,20 +25,24 @@ final class NiriProjectionCommandTests: XCTestCase {
 
         XCTAssertEqual(
             projected.engine.centerColumn(
-                in: projected.workspaceId,
-                motion: .disabled,
-                state: &projectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: projected.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &projectedState
             ),
             baseline.engine.centerColumn(
-                in: baseline.workspaceId,
-                motion: .disabled,
-                state: &baselineState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: baseline.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &baselineState
             )
         )
         XCTAssertEqual(projectedState.viewOffset, baselineState.viewOffset, accuracy: 0.001)
@@ -48,20 +52,24 @@ final class NiriProjectionCommandTests: XCTestCase {
         baselineState.jumpOffset(to: -50)
         XCTAssertEqual(
             projected.engine.centerVisibleColumns(
-                in: projected.workspaceId,
-                motion: .disabled,
-                state: &projectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: projected.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &projectedState
             ),
             baseline.engine.centerVisibleColumns(
-                in: baseline.workspaceId,
-                motion: .disabled,
-                state: &baselineState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: baseline.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &baselineState
             )
         )
         XCTAssertEqual(projectedState.viewOffset, baselineState.viewOffset, accuracy: 0.001)
@@ -70,20 +78,24 @@ final class NiriProjectionCommandTests: XCTestCase {
         baselineState.jumpOffset(to: 300)
         XCTAssertEqual(
             projected.engine.recoverSettledCoverage(
-                in: projected.workspaceId,
-                motion: .disabled,
-                state: &projectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: projected.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &projectedState
             ),
             baseline.engine.recoverSettledCoverage(
-                in: baseline.workspaceId,
-                motion: .disabled,
-                state: &baselineState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: baseline.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &baselineState
             )
         )
         XCTAssertEqual(projectedState.viewOffset, baselineState.viewOffset, accuracy: 0.001)
@@ -106,21 +118,25 @@ final class NiriProjectionCommandTests: XCTestCase {
 
         projected.engine.expandContainerToAvailablePrimarySpan(
             projectedColumn,
-            in: projected.workspaceId,
-            motion: .disabled,
-            state: &projectedState,
-            workingFrame: workingFrame,
-            gaps: gap,
-            orientation: .horizontal
+            context: .init(
+                workspaceId: projected.workspaceId,
+                motion: .disabled,
+                workingFrame: workingFrame,
+                gaps: gap,
+                orientation: .horizontal
+            ),
+            state: &projectedState
         )
         baseline.engine.expandContainerToAvailablePrimarySpan(
             baselineColumn,
-            in: baseline.workspaceId,
-            motion: .disabled,
-            state: &baselineState,
-            workingFrame: workingFrame,
-            gaps: gap,
-            orientation: .horizontal
+            context: .init(
+                workspaceId: baseline.workspaceId,
+                motion: .disabled,
+                workingFrame: workingFrame,
+                gaps: gap,
+                orientation: .horizontal
+            ),
+            state: &baselineState
         )
 
         XCTAssertEqual(projectedColumn.cachedWidth, baselineColumn.cachedWidth, accuracy: 0.001)
@@ -135,12 +151,14 @@ final class NiriProjectionCommandTests: XCTestCase {
             consumeFixture.engine.consumeOrExpelWindow(
                 consumeFixture.a,
                 direction: .right,
-                in: consumeFixture.workspaceId,
-                motion: .disabled,
+                context: .init(
+                    workspaceId: consumeFixture.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
                 state: &consumeState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal,
                 allowEdgeWrap: false
             )
         )
@@ -160,12 +178,14 @@ final class NiriProjectionCommandTests: XCTestCase {
             moveFixture.engine.moveColumn(
                 aColumn,
                 direction: .right,
-                in: moveFixture.workspaceId,
-                motion: .disabled,
-                state: &moveState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: moveFixture.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &moveState
             )
         )
         XCTAssertEqual(
@@ -197,12 +217,14 @@ final class NiriProjectionCommandTests: XCTestCase {
         XCTAssertTrue(
             fixture.engine.expelWindowFromColumn(
                 focusedColumn: fixture.column,
-                in: fixture.workspaceId,
-                motion: .disabled,
-                state: &state,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: fixture.workspaceId,
+                    motion: .disabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &state
             )
         )
         XCTAssertEqual(
@@ -230,12 +252,14 @@ final class NiriProjectionCommandTests: XCTestCase {
             projected.engine.consumeOrExpelWindow(
                 projected.b,
                 direction: .left,
-                in: projected.workspaceId,
-                motion: .enabled,
+                context: .init(
+                    workspaceId: projected.workspaceId,
+                    motion: .enabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
                 state: &projectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal,
                 allowEdgeWrap: false
             )
         )
@@ -243,12 +267,14 @@ final class NiriProjectionCommandTests: XCTestCase {
             baseline.engine.consumeOrExpelWindow(
                 baseline.b,
                 direction: .left,
-                in: baseline.workspaceId,
-                motion: .enabled,
+                context: .init(
+                    workspaceId: baseline.workspaceId,
+                    motion: .enabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
                 state: &baselineState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal,
                 allowEdgeWrap: false
             )
         )
@@ -300,24 +326,28 @@ final class NiriProjectionCommandTests: XCTestCase {
             projected.engine.moveColumn(
                 projectedBColumn,
                 direction: .left,
-                in: projected.workspaceId,
-                motion: .enabled,
-                state: &projectedState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: projected.workspaceId,
+                    motion: .enabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &projectedState
             )
         )
         XCTAssertTrue(
             baseline.engine.moveColumn(
                 baselineBColumn,
                 direction: .left,
-                in: baseline.workspaceId,
-                motion: .enabled,
-                state: &baselineState,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: .horizontal
+                context: .init(
+                    workspaceId: baseline.workspaceId,
+                    motion: .enabled,
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: .horizontal
+                ),
+                state: &baselineState
             )
         )
 
@@ -512,17 +542,21 @@ final class NiriProjectionCommandTests: XCTestCase {
                 projected.a,
                 change: .setProportion(70),
                 in: projected.workspaceId,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: orientation
+                geometry: NiriSizingGeometry(
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: orientation
+                )
             )
             baseline.engine.setWindowSecondarySpan(
                 baseline.a,
                 change: .setProportion(70),
                 in: baseline.workspaceId,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: orientation
+                geometry: NiriSizingGeometry(
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: orientation
+                )
             )
 
             let projectedFrames = layout(
@@ -560,9 +594,11 @@ final class NiriProjectionCommandTests: XCTestCase {
                 projected.a,
                 forwards: true,
                 in: projected.workspaceId,
-                workingFrame: workingFrame,
-                gaps: gap,
-                orientation: orientation
+                geometry: NiriSizingGeometry(
+                    workingFrame: workingFrame,
+                    gaps: gap,
+                    orientation: orientation
+                )
             )
             XCTAssertEqual(secondarySize(of: projected.a, orientation: orientation), .preset(1))
             XCTAssertTrue(secondarySize(of: projected.b, orientation: orientation).isAuto)
@@ -595,9 +631,11 @@ final class NiriProjectionCommandTests: XCTestCase {
             fixture.a,
             change: .setProportion(50),
             in: fixture.workspaceId,
-            workingFrame: workingFrame,
-            gaps: gap,
-            orientation: .vertical
+            geometry: NiriSizingGeometry(
+                workingFrame: workingFrame,
+                gaps: gap,
+                orientation: .vertical
+            )
         )
 
         let frame = try XCTUnwrap(layout(
@@ -978,12 +1016,14 @@ final class NiriProjectionCommandTests: XCTestCase {
             window,
             into: column,
             enteringFrom: .right,
-            in: workspaceId,
-            motion: .disabled,
-            state: &state,
-            workingFrame: workingFrame,
-            gaps: gap,
-            orientation: orientation
+            context: .init(
+                workspaceId: workspaceId,
+                motion: .disabled,
+                workingFrame: workingFrame,
+                gaps: gap,
+                orientation: orientation
+            ),
+            state: &state
         )
     }
 }

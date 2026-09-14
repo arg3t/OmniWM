@@ -31,11 +31,11 @@ extension WorkspaceManager {
     func adjacentMonitor(from monitorId: Monitor.ID, direction: Direction, wrapAround: Bool = false) -> Monitor? {
         guard let current = monitor(byId: monitorId) else { return nil }
 
-        if settings.monitorRoutingMode == .custom {
+        if settings.monitors.routingMode == .custom {
             switch MonitorRouting.gridAdjacent(
                 from: current,
                 direction: direction,
-                layout: settings.monitorRoutingSettings,
+                layout: MonitorRouting.layout(for: monitors, in: settings.monitors.arrangements),
                 monitors: monitors,
                 wrapAround: wrapAround
             ) {
@@ -68,10 +68,6 @@ extension WorkspaceManager {
         guard let currentIndex = sorted.firstIndex(where: { $0.id == monitorId }) else { return nil }
 
         return sorted[(currentIndex + 1) % sorted.count]
-    }
-
-    func monitorSortKey(_ monitor: Monitor) -> (CGFloat, CGFloat, UInt32) {
-        (monitor.frame.minX, -monitor.frame.maxY, monitor.displayId)
     }
 
     func runtimeOverrideReconnectAssignments(
@@ -193,7 +189,7 @@ extension WorkspaceManager {
         {
             return lhsDistance < rhsDistance
         }
-        return monitorSortKey(lhs) < monitorSortKey(rhs)
+        return MonitorRestoreOrder(monitor: lhs) < MonitorRestoreOrder(monitor: rhs)
     }
 
     private func monitorSelectionRank(

@@ -289,7 +289,7 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
 
     func testWorkspaceBarIPCUsesFilteredProjectionWhileWindowsQueryRetainsEntry() throws {
         let settings = makeSettingsStore()
-        XCTAssertTrue(settings.addWorkspaceBarExcludedBundleID("com.example.ipc"))
+        XCTAssertTrue(settings.workspaceBar.addExcludedBundleID("com.example.ipc"))
         let controller = WMController(
             settings: settings,
             windowFocusOperations: WindowFocusOperations(
@@ -334,7 +334,7 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
     func testWorkspaceBarFocusUsesIdentityForDuplicateDisplayNames() throws {
         let settings = makeSettingsStore()
         let displayName = "🚀"
-        settings.workspaceConfigurations = [
+        settings.workspaces.configurations = [
             WorkspaceConfiguration(name: "1", displayName: displayName),
             WorkspaceConfiguration(name: "2", displayName: displayName)
         ]
@@ -356,7 +356,12 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
         )
         _ = controller.workspaceManager.focusWorkspace(named: "1")
 
-        let projection = WorkspaceBarDataSource.workspaceBarProjection(
+        let projection = WorkspaceBarDataSource(
+            workspaceManager: controller.workspaceManager,
+            appInfoCache: controller.appInfoCache,
+            iconResolver: controller.workspaceBarIconResolver,
+            settings: settings
+        ).workspaceBarProjection(
             for: monitor,
             options: WorkspaceBarProjectionOptions(
                 deduplicateAppIcons: false,
@@ -364,11 +369,7 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
                 showFloatingWindows: false,
                 excludedBundleIDs: []
             ),
-            workspaceManager: controller.workspaceManager,
-            appInfoCache: controller.appInfoCache,
-            iconResolver: controller.workspaceBarIconResolver,
-            focusedToken: nil,
-            settings: settings
+            focusedToken: nil
         )
         let sourceItem = try XCTUnwrap(projection.items.first { $0.rawName == "1" })
         let targetItem = try XCTUnwrap(projection.items.first { $0.rawName == "2" })
@@ -586,7 +587,12 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
         showFloatingWindows: Bool = false,
         excludedBundleIDs: Set<String>
     ) -> WorkspaceBarProjection {
-        WorkspaceBarDataSource.workspaceBarProjection(
+        WorkspaceBarDataSource(
+            workspaceManager: fixture.workspaceManager,
+            appInfoCache: fixture.appInfoCache,
+            iconResolver: fixture.iconResolver,
+            settings: fixture.settings
+        ).workspaceBarProjection(
             for: fixture.monitor,
             options: WorkspaceBarProjectionOptions(
                 deduplicateAppIcons: deduplicate,
@@ -594,11 +600,7 @@ final class WorkspaceBarDataSourceTests: XCTestCase {
                 showFloatingWindows: showFloatingWindows,
                 excludedBundleIDs: excludedBundleIDs
             ),
-            workspaceManager: fixture.workspaceManager,
-            appInfoCache: fixture.appInfoCache,
-            iconResolver: fixture.iconResolver,
-            focusedToken: nil,
-            settings: fixture.settings
+            focusedToken: nil
         )
     }
 

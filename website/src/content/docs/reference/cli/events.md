@@ -9,9 +9,9 @@ Subscribe to real-time state change events from OmniWM.
 
 ## Delivery Pipeline
 
-`IPCServer.start()` attaches `IPCApplicationBridge` to `WMController`. Controller state changes publish channel snapshots through the bridge, and `IPCConnection` expands the requested channels for each client, sends the initial `subscribe` response, starts per-channel stream tasks, and emits initial snapshots unless `--no-send-initial` is set.
+`IPCServer.start()` attaches `IPCApplicationBridge` to `WMController`. Controller state changes publish channel snapshots through the bridge. For each client, `IPCConnection` expands and registers new subscription channels, collects their initial snapshots unless `--no-send-initial` is set, and sends the `subscribe` response followed by those snapshots. It then starts per-channel tasks to forward buffered and live updates.
 
-Initial snapshots are best-effort seed state, not a strict ordering barrier. If state changes during subscription setup, a live update can race with the initial snapshot.
+Initial snapshots are sent before updates from newly subscribed channels, but they are collected separately rather than as one atomic snapshot across channels. Updates buffered during setup can describe state observed before or after a channel's initial snapshot.
 
 Subscription channels are coalesced state streams, not a lossless event log. Slow consumers may only observe the newest buffered update for a channel.
 
@@ -109,4 +109,31 @@ omniwmctl watch active-workspace --exec ./on-workspace-change.sh
 
 # Process all events with jq
 omniwmctl watch --all --exec jq '.result'
+
+# Badge workspaces whose window titles match a pattern
+omniwmctl watch workspace-bar --reconnect --exec ./badge.sh
 ```
+
+### Badging workspaces from events
+
+`badge.sh` prefixes 🚨 to the label of any workspace holding a window whose title matches `PATTERN` and strips the prefix otherwise. It reads one `workspace-bar` envelope on stdin and calls `omniwmctl workspace rename` only for labels that differ from the computed state:
+
+```bash
+#!/bin/bash
+export PATH="/opt/homebrew/bin:$PATH"
+pattern="${PATTERN:-incoming call}"
+jq -j --arg re "$pattern" '
+  .result.payload.monitors[]?.workspaces[]?
+  | .rawName as $raw
+  | (.displayName | sub("^🚨 "; "")) as $base
+  | (any(.windows[]?.allWindows[]?.title; test($re; "i"))) as $hit
+  | (if $hit then "🚨 " + $base elif $base == $raw then "" else $base end) as $want
+  | select($want != .displayName and ($want != "" or .displayName != $raw))
+  | ([0] | implode) as $nul
+  | $raw + $nul + $want + $nul
+' | while IFS= read -r -d '' raw && IFS= read -r -d '' want; do
+  omniwmctl workspace rename "$raw" "$want"
+done
+```
+
+Address workspaces by raw ID: a badged label changes what `focus-name` matches. Rename activity stops once labels match the computed state, because the script renames only on a difference and OmniWM publishes `workspace-bar` only when the bar changed; how many times the script runs per change is not guaranteed. `watch` logs a non-zero child exit and keeps running, so a no-op rename (exit 1, `no_change`) is harmless. With `hideEmptyWorkspaces` enabled, an emptied workspace leaves the snapshot, so its badge is cleared the next time it appears. Fields are NUL-framed, so labels containing backslashes, tabs, or spaces survive unchanged.

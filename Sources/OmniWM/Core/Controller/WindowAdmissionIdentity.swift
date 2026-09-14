@@ -100,12 +100,16 @@ extension AXEventHandler {
               !state.identityRebindTargetDestroyed,
               case let .identityRebind(oldWindow, newWindow, _, _, _) = state.trigger,
               newWindow.token == targetToken,
-              sameAXWindowIdentity(newWindow.axRef, axRef),
-              let sourceEntry = controller.workspaceManager.entry(for: oldWindow.token),
-              sameAXWindowIdentity(sourceEntry.axRef, oldWindow.axRef)
+              sameAXWindowIdentity(newWindow.axRef, axRef)
         else {
             return nil
         }
+        if let source = state.identityRebindSource {
+            return controller.workspaceManager.entry(for: source.handle)?.token
+        }
+        guard let sourceEntry = controller.workspaceManager.entry(for: oldWindow.token),
+              sameAXWindowIdentity(sourceEntry.axRef, oldWindow.axRef)
+        else { return nil }
         return oldWindow.token
     }
 
@@ -202,7 +206,8 @@ extension AXEventHandler {
            CFEqual(newWindow.axRef.element, axRef.element)
         {
             switch state.executionPhase {
-            case .waiting:
+            case .waiting,
+                 .queued:
                 return .waitingIdentityRebindTarget(
                     retryGeneration: state.generation,
                     oldWindow: oldWindow,
@@ -230,7 +235,7 @@ extension AXEventHandler {
         guard let state = admissionRetryStateByWindowId[windowId],
               !state.exhausted,
               state.generation == retryGeneration,
-              state.executionPhase == .waiting,
+              state.executionPhase == .waiting || state.executionPhase == .queued,
               case let .identityRebind(retryOld, retryNew, _, _, _) = state.trigger,
               retryOld.token == oldWindow.token,
               retryNew.token == newWindow.token,
@@ -246,17 +251,15 @@ extension AXEventHandler {
     }
 
     func deferDestroyedPendingManagedWindowIdentityRebind(
-        windowId: UInt32,
-        retryGeneration: UInt64,
-        executionOwner: UInt64,
+        execution: AdmissionRetryExecution,
         oldWindow: AXManagedWindowIdentity,
         newWindow: AXManagedWindowIdentity,
         axRef: AXWindowRef
     ) -> Bool {
-        guard var state = admissionRetryStateByWindowId[windowId],
+        guard var state = admissionRetryStateByWindowId[execution.windowId],
               !state.exhausted,
-              state.generation == retryGeneration,
-              state.executionPhase == .running(executionOwner),
+              state.generation == execution.generation,
+              state.executionPhase == .running(execution.executionOwner),
               !state.identityRebindTargetDestroyed,
               case let .identityRebind(retryOld, retryNew, _, _, _) = state.trigger,
               retryOld.token == oldWindow.token,
@@ -268,7 +271,7 @@ extension AXEventHandler {
             return false
         }
         state.identityRebindTargetDestroyed = true
-        admissionRetryStateByWindowId[windowId] = state
+        admissionRetryStateByWindowId[execution.windowId] = state
         return true
     }
 

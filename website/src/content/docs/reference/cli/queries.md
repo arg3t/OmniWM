@@ -30,7 +30,7 @@ Selectors filter query results. Value selectors take an argument; boolean select
 | Selector | Description |
 |----------|-------------|
 | `--focused` | Only the focused item |
-| `--visible` | Only visible items; windows also require a visible workspace, no window hidden state, and an app that is not hidden |
+| `--visible` | Only visible items; windows also require a visible workspace, no window hidden state, an app that is not hidden, and no WindowServer ordered-out state |
 | `--floating` | Only floating windows |
 | `--scratchpad` | Only windows assigned to a scratchpad |
 | `--current` | Only the current/interaction item |
@@ -46,7 +46,9 @@ Field tokens are part of the CLI contract. Returned JSON still uses the payload 
 
 `window-id` returns the JSON field `windowId`, the raw CGWindowID of the window. It is stable for the window's lifetime but not session-scoped; keep using `id` for `window` actions.
 
-For windows, `is-visible` is true only when the workspace is visible, the window has no `hidden-reason`, and its macOS application is not hidden. `is-app-hidden` exposes the PID-scoped macOS hide state independently of `layout-reason` and `hidden-reason`; selecting `is-app-hidden` returns the JSON field `isAppHidden`.
+For windows, `is-visible` is true only when the workspace is visible, the window has no `hidden-reason`, its macOS application is not hidden, and WindowServer has not reported the window as ordered out. If the WindowServer ordered-in state is unavailable, the other visibility checks determine the result. The `--visible` selector uses the same conditions.
+
+`is-app-hidden` exposes the PID-scoped macOS hide state independently of `layout-reason` and `hidden-reason`; selecting `is-app-hidden` returns the JSON field `isAppHidden`.
 
 **Workspace fields:** `id`, `raw-name`, `display-name`, `number`, `layout`, `display`, `is-focused`, `is-visible`, `is-current`, `window-counts`, `focused-window-id`
 
@@ -66,6 +68,7 @@ The three workspace flags answer different questions. `is-focused` marks the wor
 | `active-workspace` | — | — | Current interaction monitor and active workspace |
 | `focused-monitor` | — | — | Current interaction monitor and its active workspace |
 | `apps` | — | — | Managed app summary |
+| `metrics` | — | — | Always-on runtime metrics: AX frame-write attempts and whole-attempt wall time (the setter plus its ordering/verification reads; enhanced-UI batch work and the retry element refresh are not counted) as since-launch totals plus live rows per app AX context, display tick timing, layout build counts, and process energy/CPU. Populated without an active `capture` session |
 | `focused-window` | — | — | Focused managed window snapshot |
 | `windows` | `--window`, `--workspace`, `--display`, `--focused`, `--visible`, `--floating`, `--scratchpad`, `--app`, `--bundle-id` | window fields | Managed windows |
 | `workspaces` | `--workspace`, `--display`, `--current`, `--visible`, `--focused` | workspace fields | Configured workspaces with occupancy |
