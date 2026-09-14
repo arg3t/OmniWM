@@ -8,12 +8,12 @@ import QuartzCore
 extension WorkspaceManager {
     func activeLayoutKind(for workspaceId: WorkspaceDescriptor.ID) -> ActiveLayoutKind {
         guard let descriptor = workspaceCatalog.descriptor(for: workspaceId) else { return .niri }
-        switch settings.workspaces.layoutType(for: descriptor.name) {
+        return switch settings.workspaces.layoutType(for: descriptor.name) {
         case .dwindle:
             .dwindle
         case .stack:
             .stack
-        case .niri:
+        case .niri, .defaultLayout:
             .niri
         }
     }
