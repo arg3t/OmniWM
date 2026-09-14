@@ -425,7 +425,7 @@ extension IPCAutomationManifest {
         ),
         .init(
             name: .workspaceLayout(.toggle),
-            summary: "Toggle the current workspace between Niri and Dwindle."
+            summary: "Cycle the current workspace through Niri, Dwindle, and Stack."
         ),
         .init(
             name: .workspaceLayout(.set),
