@@ -93,6 +93,7 @@ import QuartzCore
 
     private(set) lazy var niriHandler = NiriLayoutHandler(controller: controller)
     private(set) lazy var dwindleHandler = DwindleLayoutHandler(controller: controller)
+    private(set) lazy var stackHandler = StackLayoutHandler(controller: controller)
     private lazy var diffExecutor = LayoutDiffExecutor(refreshController: self)
 
     var isDiscoveryInProgress: Bool {
