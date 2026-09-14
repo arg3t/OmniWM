@@ -11,8 +11,6 @@ permissions:
 jobs:
   release:
     runs-on: macos-26
-    env:
-      GHOSTTYKIT_VERSION: 0.6.4
     steps:
       - uses: actions/checkout@v7
 
@@ -51,11 +49,11 @@ jobs:
 
       - name: Fetch GhosttyKit
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          source Scripts/dev-tools.env
           mkdir -p Frameworks
           curl --fail --location --retry 3 \
             --output "$RUNNER_TEMP/GhosttyKit.xcframework.zip" \
-            "https://github.com/BarutSRB/OmniWM/releases/download/v$GHOSTTYKIT_VERSION/GhosttyKit.xcframework-v$GHOSTTYKIT_VERSION.zip"
+            "https://github.com/BarutSRB/OmniWM/releases/download/v$OMNIWM_GHOSTTY_DOWNLOAD_VERSION/GhosttyKit.xcframework-v$OMNIWM_GHOSTTY_DOWNLOAD_VERSION.zip"
           ditto -x -k "$RUNNER_TEMP/GhosttyKit.xcframework.zip" Frameworks
 
       - name: Build and sign app
