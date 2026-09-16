@@ -47,6 +47,7 @@ extension WorkspaceManager {
             for id in toRemove {
                 niriEngine?.removeWorkspaceState(id)
                 dwindleEngine?.removeLayout(for: id)
+                stackEngine?.removeLayout(for: id)
             }
         }
         removeWorkspaceRuntimeState(for: ids)

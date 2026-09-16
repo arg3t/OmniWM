@@ -781,7 +781,7 @@ The unassigned advanced actions are available in Settings > Hotkeys. `Focus Down
 
 #### Stack Layout
 
-Stack uses the dwm master-and-stack arrangement. The newest tiled window becomes the left master. The other tiled windows share equal-height rows on the right.
+Stack uses the dwm master-and-stack arrangement. The master stays on the left. New tiled windows join the bottom of the right stack. The stacked windows share equal-height rows.
 
 | Goal | Default Shortcut | Behavior |
 |------|------------------|----------|

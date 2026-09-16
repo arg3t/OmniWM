@@ -60,6 +60,26 @@ final class WorkspaceDeletionEngineCleanupTests: XCTestCase {
         XCTAssertEqual(engine.windowCount(in: workspaceId), 0)
     }
 
+    func testDeletingEmptiedWorkspaceRemovesStackEngineStateAndFrames() throws {
+        let controller = makeController()
+        let engine = try XCTUnwrap(controller.stackEngine)
+        let workspaceId = try makeTransientWorkspace(named: "96", layoutType: .stack, controller: controller)
+        let token = addManagedWindow(pid: 899, windowId: 1, to: workspaceId, controller: controller)
+        let plans = controller.layoutRefreshController.buildWorkspacePlansInBatch {
+            controller.stackLayoutHandler.layoutWithStackEngine(activeWorkspaces: [workspaceId])
+        }
+        XCTAssertEqual(plans.count, 1)
+        XCTAssertTrue(engine.contains(token, in: workspaceId))
+        XCTAssertNotNil(engine.frame(for: token, in: workspaceId))
+        XCTAssertNotNil(controller.workspaceManager.removeWindow(pid: token.pid, windowId: token.windowId))
+
+        removeTransientWorkspace(named: "96", controller: controller)
+
+        XCTAssertNil(controller.workspaceManager.workspaceId(named: "96"))
+        XCTAssertFalse(engine.contains(token, in: workspaceId))
+        XCTAssertTrue(engine.frames(in: workspaceId).isEmpty)
+    }
+
     func testDwindleRemoveWindowWithMismatchedWorkspaceLeavesTreesIntact() {
         let engine = DwindleLayoutEngine()
         let workspaceA = WorkspaceDescriptor.ID()

@@ -6,7 +6,6 @@ import Foundation
 
 @MainActor
 final class StackLayoutHandler {
-    private var framesByWorkspace: [WorkspaceDescriptor.ID: [WindowToken: CGRect]] = [:]
     weak var controller: WMController?
 
     init(controller: WMController?) {
@@ -34,9 +33,9 @@ final class StackLayoutHandler {
                 for: workspaceId,
                 screen: input.monitor.workingFrame,
                 fullscreenScreen: input.monitor.fullscreenLayoutFrame,
-                innerGap: controller.innerGap(for: monitor)
+                innerGap: controller.innerGap(for: monitor),
+                excludedTokens: input.excludedTokens
             )
-            framesByWorkspace[workspaceId] = frames
             let rememberedFocusToken = controller.workspaceManager.preferredFocusToken(in: workspaceId)
                 ?? engine.orderedTokens(in: workspaceId).first
             plans.append(
@@ -64,19 +63,21 @@ final class StackLayoutHandler {
 
         return plans
     }
+
     func frame(for token: WindowToken, in workspaceId: WorkspaceDescriptor.ID) -> CGRect? {
-        framesByWorkspace[workspaceId]?[token]
+        controller?.stackEngine?.frame(for: token, in: workspaceId)
     }
 
     func frames(in workspaceId: WorkspaceDescriptor.ID) -> [WindowToken: CGRect] {
-        framesByWorkspace[workspaceId] ?? [:]
+        controller?.stackEngine?.frames(in: workspaceId) ?? [:]
     }
 
     func hitTestFocusableWindow(point: CGPoint, in workspaceId: WorkspaceDescriptor.ID) -> WindowToken? {
-        guard let controller else { return nil }
+        guard let controller, let engine = controller.stackEngine else { return nil }
         let eligibleTokens = eligibleTokens(in: workspaceId)
-        return controller.stackEngine?.orderedTokens(in: workspaceId).reversed().first { token in
-            eligibleTokens.contains(token) && framesByWorkspace[workspaceId]?[token]?.contains(point) == true
+        let frames = engine.frames(in: workspaceId)
+        return engine.orderedTokens(in: workspaceId).reversed().first { token in
+            eligibleTokens.contains(token) && frames[token]?.contains(point) == true
         }
     }
 

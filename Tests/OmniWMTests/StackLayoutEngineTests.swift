@@ -22,7 +22,8 @@ final class StackLayoutEngineTests: XCTestCase {
             for: workspaceId,
             screen: screen,
             fullscreenScreen: screen,
-            innerGap: 10
+            innerGap: 10,
+            excludedTokens: []
         )
 
         XCTAssertEqual(frames[tokens[0]], CGRect(x: 10, y: 20, width: 544.5, height: 900))
@@ -30,7 +31,7 @@ final class StackLayoutEngineTests: XCTestCase {
         XCTAssertEqual(frames[tokens[2]], CGRect(x: 564.5, y: 475, width: 445.5, height: 445))
     }
 
-    func testNewWindowBecomesMaster() {
+    func testNewWindowJoinsBottomOfStack() {
         let engine = StackLayoutEngine()
         let first = token(1)
         let second = token(2)
@@ -39,7 +40,48 @@ final class StackLayoutEngineTests: XCTestCase {
         engine.syncWindows([first, second], in: workspaceId)
         engine.syncWindows([first, second, newest], in: workspaceId)
 
-        XCTAssertEqual(engine.orderedTokens(in: workspaceId), [newest, first, second])
+        XCTAssertEqual(engine.orderedTokens(in: workspaceId), [first, second, newest])
+    }
+
+    func testExcludedMasterDoesNotKeepLayoutSpace() {
+        let engine = StackLayoutEngine()
+        let master = token(1)
+        let visible = token(2)
+        engine.isMutationSanctioned = true
+        engine.syncWindows([master, visible], in: workspaceId)
+
+        let frames = engine.calculateLayout(
+            for: workspaceId,
+            screen: screen,
+            fullscreenScreen: screen,
+            innerGap: 10,
+            excludedTokens: [master]
+        )
+
+        XCTAssertEqual(frames, [visible: screen])
+        XCTAssertEqual(engine.orderedTokens(in: workspaceId), [master, visible])
+    }
+
+    func testFullscreenKeepsSiblingFramesCurrent() {
+        let engine = StackLayoutEngine()
+        let tokens = [token(1), token(2), token(3)]
+        let fullscreenScreen = CGRect(x: 0, y: 0, width: 1_200, height: 1_000)
+        engine.isMutationSanctioned = true
+        engine.syncWindows(Array(tokens.prefix(2)), in: workspaceId)
+        XCTAssertTrue(engine.toggleFullscreen(tokens[0], in: workspaceId))
+        engine.syncWindows(tokens, in: workspaceId)
+
+        let frames = engine.calculateLayout(
+            for: workspaceId,
+            screen: screen,
+            fullscreenScreen: fullscreenScreen,
+            innerGap: 10,
+            excludedTokens: []
+        )
+
+        XCTAssertEqual(frames[tokens[0]], fullscreenScreen)
+        XCTAssertEqual(frames[tokens[1]], CGRect(x: 564.5, y: 20, width: 445.5, height: 445))
+        XCTAssertEqual(frames[tokens[2]], CGRect(x: 564.5, y: 475, width: 445.5, height: 445))
     }
 
     func testFocusAndMoveWrapThroughTheWholeClientOrder() throws {

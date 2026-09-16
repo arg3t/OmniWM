@@ -12,11 +12,13 @@ final class StackLayoutEngine {
     }
 
     private var states: [WorkspaceDescriptor.ID: WorkspaceState] = [:]
+    private var framesByWorkspace: [WorkspaceDescriptor.ID: [WindowToken: CGRect]] = [:]
     var isMutationSanctioned = false
 
     func removeLayout(for workspaceId: WorkspaceDescriptor.ID) {
         assertSanctionedMutation()
         states.removeValue(forKey: workspaceId)
+        framesByWorkspace.removeValue(forKey: workspaceId)
     }
 
     func removeWindow(_ token: WindowToken, from workspaceId: WorkspaceDescriptor.ID) {
@@ -40,14 +42,8 @@ final class StackLayoutEngine {
 
         var knownTokens = Set(state.orderedTokens)
         knownTokens.reserveCapacity(tokens.count)
-        if state.orderedTokens.isEmpty {
-            for token in tokens where knownTokens.insert(token).inserted {
-                state.orderedTokens.append(token)
-            }
-        } else {
-            for token in tokens where knownTokens.insert(token).inserted {
-                state.orderedTokens.insert(token, at: 0)
-            }
+        for token in tokens where knownTokens.insert(token).inserted {
+            state.orderedTokens.append(token)
         }
 
         if state.selectedToken.map(tokenSet.contains) != true {
@@ -69,6 +65,14 @@ final class StackLayoutEngine {
 
     func selectedToken(in workspaceId: WorkspaceDescriptor.ID) -> WindowToken? {
         states[workspaceId]?.selectedToken
+    }
+
+    func frame(for token: WindowToken, in workspaceId: WorkspaceDescriptor.ID) -> CGRect? {
+        framesByWorkspace[workspaceId]?[token]
+    }
+
+    func frames(in workspaceId: WorkspaceDescriptor.ID) -> [WindowToken: CGRect] {
+        framesByWorkspace[workspaceId] ?? [:]
     }
 
     func activate(_ token: WindowToken, in workspaceId: WorkspaceDescriptor.ID) -> Bool {
@@ -156,35 +160,42 @@ final class StackLayoutEngine {
         for workspaceId: WorkspaceDescriptor.ID,
         screen: CGRect,
         fullscreenScreen: CGRect,
-        innerGap: CGFloat
+        innerGap: CGFloat,
+        excludedTokens: Set<WindowToken>
     ) -> [WindowToken: CGRect] {
         let state = states[workspaceId] ?? .init()
-        let tokens = state.orderedTokens
-        guard !tokens.isEmpty else { return [:] }
-
-        if let fullscreenToken = state.fullscreenToken {
-            return [fullscreenToken: fullscreenScreen]
+        let tokens = state.orderedTokens.filter { !excludedTokens.contains($0) }
+        guard !tokens.isEmpty else {
+            framesByWorkspace[workspaceId] = [:]
+            return [:]
         }
 
-        guard tokens.count > 1 else { return [tokens[0]: screen] }
+        var frames: [WindowToken: CGRect]
+        if tokens.count == 1 {
+            frames = [tokens[0]: screen]
+        } else {
+            let gap = max(0, innerGap)
+            let contentWidth = max(0, screen.width - gap)
+            let masterWidth = contentWidth * 0.55
+            let stackWidth = contentWidth - masterWidth
+            frames = [tokens[0]: CGRect(x: screen.minX, y: screen.minY, width: masterWidth, height: screen.height)]
+            let stackCount = tokens.count - 1
+            let stackHeight = max(0, (screen.height - gap * CGFloat(stackCount - 1)) / CGFloat(stackCount))
+            let stackX = screen.minX + masterWidth + gap
 
-        let gap = max(0, innerGap)
-        let contentWidth = max(0, screen.width - gap)
-        let masterWidth = contentWidth * 0.55
-        let stackWidth = contentWidth - masterWidth
-        var frames = [tokens[0]: CGRect(x: screen.minX, y: screen.minY, width: masterWidth, height: screen.height)]
-        let stackCount = tokens.count - 1
-        let stackHeight = max(0, (screen.height - gap * CGFloat(stackCount - 1)) / CGFloat(stackCount))
-        let stackX = screen.minX + masterWidth + gap
-
-        for (index, token) in tokens.dropFirst().enumerated() {
-            frames[token] = CGRect(
-                x: stackX,
-                y: screen.minY + CGFloat(index) * (stackHeight + gap),
-                width: stackWidth,
-                height: stackHeight
-            )
+            for (index, token) in tokens.dropFirst().enumerated() {
+                frames[token] = CGRect(
+                    x: stackX,
+                    y: screen.minY + CGFloat(index) * (stackHeight + gap),
+                    width: stackWidth,
+                    height: stackHeight
+                )
+            }
         }
+        if let fullscreenToken = state.fullscreenToken, frames[fullscreenToken] != nil {
+            frames[fullscreenToken] = fullscreenScreen
+        }
+        framesByWorkspace[workspaceId] = frames
         return frames
     }
 
