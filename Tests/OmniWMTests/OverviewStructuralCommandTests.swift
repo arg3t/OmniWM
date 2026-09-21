@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import ApplicationServices
 import CoreGraphics
 import Foundation
 @testable import OmniWM
 import OmniWMIPC
+import QuartzCore
 import XCTest
 
 @MainActor
@@ -14,6 +15,95 @@ final class OverviewStructuralCommandTests: XCTestCase {
         XCTAssertFalse(CommandHandler.shouldIgnoreCommand(.presentation(.overview), isOverviewOpen: true))
         XCTAssertTrue(CommandHandler.shouldIgnoreCommand(.column(.moveToFirst), isOverviewOpen: true))
         XCTAssertFalse(CommandHandler.shouldIgnoreCommand(.column(.moveToFirst), isOverviewOpen: false))
+    }
+
+    func testNativeFullscreenWindowsGetCardsButRefuseDragAndStructuralMutation() throws {
+        let fixture = try makeFixture(layouts: [.niri])
+        let workspaceId = fixture.workspaceIds[0]
+        let fullscreen = try addManagedWindow(pid: 461_040, windowId: 40, to: workspaceId, fixture: fixture)
+        _ = try addManagedWindow(pid: 461_040, windowId: 41, to: workspaceId, fixture: fixture)
+        let workspaceManager = fixture.controller.workspaceManager
+        XCTAssertTrue(workspaceManager.markNativeFullscreenSuspended(fullscreen.id, ownsNativeFocus: false))
+        XCTAssertEqual(workspaceManager.nativeFullscreenRecord(for: fullscreen.id)?.transition, .suspended)
+        let entry = try XCTUnwrap(workspaceManager.entry(for: fullscreen))
+
+        var environment = OverviewEnvironment()
+        environment.windowTitle = { "Window \($0.windowId)" }
+        environment.windowFrame = { _ in CGRect(x: 0, y: 0, width: 400, height: 300) }
+        let facts = OverviewWindowFacts(wmController: fixture.controller, environment: environment)
+        XCTAssertTrue(facts.isOverviewEligible(entry, workspaceManager: workspaceManager))
+        XCTAssertFalse(facts.isStructurallyMutable(entry))
+        XCTAssertTrue(
+            facts.makeOverviewWindowData(for: entry, preferredFrame: nil, appInfoCache: fixture.controller.appInfoCache)
+                .isNativeFullscreen
+        )
+
+        let overview = OverviewController(
+            wmController: fixture.controller,
+            motionPolicy: fixture.controller.motionPolicy,
+            environment: environment
+        )
+        overview.prepareOpenState()
+        overview.onAnimationComplete(state: .open)
+        overview.drag.beginDrag(on: fixture.monitor.id, handle: fullscreen, startPoint: .zero)
+        XCTAssertFalse(overview.hasActiveDragSession)
+        XCTAssertEqual(
+            overview.performStructuralHotkey(.workspace(.moveTo(1)), selectedHandle: fullscreen),
+            .unchanged
+        )
+        XCTAssertEqual(workspaceManager.workspace(for: fullscreen.id), workspaceId)
+    }
+
+    func testNativeFullscreenSnapshotIncludesCardWithFullScreenCaption() throws {
+        let fixture = try makeFixture(layouts: [.niri])
+        let fullscreen = try addManagedWindow(
+            pid: 461_041, windowId: 42, to: fixture.workspaceIds[0], fixture: fixture
+        )
+        let manager = fixture.controller.workspaceManager
+        XCTAssertTrue(manager.markNativeFullscreenSuspended(fullscreen.id, ownsNativeFocus: false))
+        var environment = OverviewEnvironment()
+        environment.windowTitle = { _ in "Fullscreen Document" }
+        environment.windowFrame = { _ in CGRect(x: 100, y: 100, width: 600, height: 500) }
+        let facts = OverviewWindowFacts(wmController: fixture.controller, environment: environment)
+        let snapshot = OverviewSnapshot(wmController: fixture.controller, facts: facts)
+        snapshot.build()
+        let projection = OverviewViewportProjection(wmController: fixture.controller, snapshot: snapshot, scale: 1)
+        projection.rebuildProjectedLayouts()
+        let layout = try XCTUnwrap(projection.layoutsByMonitor[fixture.monitor.id])
+        let card = try XCTUnwrap(layout.window(for: fullscreen))
+        XCTAssertTrue(card.isNativeFullscreen)
+        XCTAssertEqual(card.workspaceId, fixture.workspaceIds[0])
+        let layer = OverviewWindowLayer()
+        layer.updateContent(card, contentsScale: 2)
+        let captions = (layer.root.sublayers ?? []).flatMap { $0.sublayers ?? [] }
+            .compactMap { ($0 as? CATextLayer)?.string as? String }
+        XCTAssertTrue(captions.contains("Full Screen"))
+        XCTAssertTrue(captions.contains("Fullscreen Document"))
+    }
+
+    func testOverviewActivationUsesNativeFullscreenOwner() async throws {
+        let fixture = try makeFixture(layouts: [.niri])
+        let fullscreen = try addManagedWindow(
+            pid: 461_042, windowId: 43, to: fixture.workspaceIds[0], fixture: fixture
+        )
+        let manager = fixture.controller.workspaceManager
+        XCTAssertTrue(manager.markNativeFullscreenSuspended(fullscreen.id, ownsNativeFocus: false))
+        let focused = expectation(description: "Overview fronts the native fullscreen window")
+        fixture.focusRecorder.onFocus = { focused.fulfill() }
+        fixture.controller.toggleOverview()
+        XCTAssertTrue(fixture.controller.isOverviewOpen())
+
+        fixture.controller.windowActionHandler.dismissOverview()
+
+        XCTAssertFalse(fixture.controller.isOverviewOpen())
+        await fulfillment(of: [focused], timeout: 1)
+        XCTAssertEqual(fixture.focusRecorder.activatedPIDs, [fullscreen.pid])
+        XCTAssertEqual(fixture.focusRecorder.focusedTokens, [fullscreen.id])
+        XCTAssertEqual(fixture.focusRecorder.raisedCount, 1)
+        XCTAssertEqual(manager.nativeFullscreenRecord(for: fullscreen.id)?.transition, .suspended)
+        XCTAssertEqual(manager.layoutReason(for: fullscreen.id), .nativeFullscreen)
+        XCTAssertEqual(manager.selectedManagedToken, fullscreen.id)
+        while let task = fixture.controller.layoutRefreshController.layoutState.activeRefreshTask { await task.value }
     }
 
     func testPerformCommandToggleOverviewClosesOpenOverview() throws {
@@ -43,6 +133,7 @@ final class OverviewStructuralCommandTests: XCTestCase {
         var activatedPIDs: [pid_t] = []
         var focusedTokens: [WindowToken] = []
         var raisedCount = 0
+        var onFocus: (() -> Void)?
 
         var callCount: Int {
             activatedPIDs.count + focusedTokens.count + raisedCount
@@ -1057,6 +1148,227 @@ final class OverviewStructuralCommandTests: XCTestCase {
         )
     }
 
+    func testOverviewSelectionSettlesOffViewportDestinationBeforeRelayout() async throws {
+        for targetLayout in [LayoutType.niri, .dwindle] {
+            let fixture = try makeFixture(layouts: [.niri, targetLayout])
+            let controller = fixture.controller
+            let manager = controller.workspaceManager
+            let source = fixture.workspaceIds[0]
+            let destination = fixture.workspaceIds[1]
+            _ = try addManagedWindow(pid: 461_050, windowId: 50, to: source, fixture: fixture)
+            var handles: [WindowHandle] = []
+            for index in 0 ..< 4 {
+                handles.append(try addManagedWindow(
+                    pid: 461_051, windowId: 51 + index, to: destination, fixture: fixture
+                ))
+            }
+            let refresh = controller.layoutRefreshController
+            refresh.requestImmediateRelayout(reason: .overviewMutation, affectedWorkspaceIds: Set(fixture.workspaceIds))
+            while let task = refresh.layoutState.activeRefreshTask { await task.value }
+            let target = try XCTUnwrap(handles.last)
+            let parked = CGRect(x: -20000, y: -20000, width: 500, height: 400)
+            var environment = OverviewEnvironment()
+            environment.windowTitle = { _ in "Window" }
+            environment.windowFrame = { _ in parked }
+            environment.activateOmniWM = {}
+            environment.schedulePostCloseHandoff = { _ in }
+            controller.motionPolicy.animationsEnabled = true
+            let overview = OverviewController(
+                wmController: controller,
+                motionPolicy: controller.motionPolicy,
+                environment: environment,
+                animationInstaller: { _, _, _ in true },
+                animationMediaTimeProvider: { 0 }
+            )
+            overview.onPrepareActivation = controller.windowActionHandler.prepareOverviewSelection
+            overview.open()
+            overview.onAnimationComplete(state: .open)
+            let view = try XCTUnwrap(overview.windowSession.primaryOverviewWindow()?.contentView?.subviews
+                .compactMap { $0 as? OverviewView }.first)
+            if targetLayout == .niri {
+                XCTAssertEqual(view.layout.window(for: target)?.originalFrame, parked)
+            }
+            let watermark = controller.intentLedger.newestFocusIntentId()
+
+            overview.input.selectAndActivateWindow(target)
+
+            guard case .closing = overview.state else { return XCTFail("Expected close before relayout runs") }
+            let request = try XCTUnwrap(refresh.layoutState.activeRefresh ?? refresh.layoutState.pendingRefresh)
+            XCTAssertEqual(request.reason, .overviewMutation)
+            XCTAssertEqual(request.affectedWorkspaceIds, [source, destination])
+            XCTAssertEqual(manager.activeWorkspace(on: fixture.monitor.id)?.id, destination)
+            let restFrame = try XCTUnwrap(view.layout.window(for: target)?.interpolatedFrame(progress: 0))
+            XCTAssertTrue(fixture.monitor.frame.intersects(restFrame))
+            XCTAssertEqual(view.layout.anchorWorkspaceId, destination)
+            XCTAssertFalse(manager.niriViewportState(for: destination).hasPendingOffsetAnimation)
+            XCTAssertFalse(manager.animationDriver.hasMotion(in: destination))
+            XCTAssertEqual(fixture.focusRecorder.callCount, 0)
+
+            while let task = refresh.layoutState.activeRefreshTask { await task.value }
+
+            let frames = targetLayout == .niri
+                ? controller.niriEngine?.captureWindowFrames(in: destination)
+                : controller.dwindleEngine?.calculateLayout(
+                    for: destination,
+                    screen: controller.insetWorkingFrame(for: fixture.monitor)
+                )
+            XCTAssertEqual(restFrame, frames?[target.id])
+            XCTAssertEqual(view.layout.window(for: target)?.interpolatedFrame(progress: 0), restFrame)
+            XCTAssertEqual(controller.intentLedger.newestFocusIntentId(), watermark)
+            XCTAssertEqual(fixture.focusRecorder.callCount, 0)
+            overview.completeCloseTransition(targetWindow: nil)
+        }
+    }
+
+    func testOverviewSelectionSettlesExistingReorderAndViewportMotion() async throws {
+        let fixture = try makeFixture(layouts: [.niri])
+        let controller = fixture.controller
+        let workspaceId = fixture.workspaceIds[0]
+        var handles: [WindowHandle] = []
+        for index in 0 ..< 4 {
+            handles.append(try addManagedWindow(pid: 461_060, windowId: 60 + index, to: workspaceId, fixture: fixture))
+        }
+        let refresh = controller.layoutRefreshController
+        refresh.requestImmediateRelayout(reason: .overviewMutation, affectedWorkspaceIds: [workspaceId])
+        while let task = refresh.layoutState.activeRefreshTask { await task.value }
+        let target = try XCTUnwrap(handles.last)
+        let prepared = try prepareDragOverview(fixture)
+        let overview = prepared.overview
+        controller.motionPolicy.animationsEnabled = true
+        let engine = try XCTUnwrap(controller.niriEngine)
+        overview.onPrepareActivation = controller.windowActionHandler.prepareOverviewSelection
+        refresh.displayLinkActivationForTests = { _ in true }
+
+        XCTAssertTrue(overview.executeStructuralHotkey(.column(.moveToFirst), selectedHandle: target)?
+            .didMutate == true)
+        XCTAssertTrue(engine.hasAnyColumnAnimationsRunning(in: workspaceId))
+        let state = controller.workspaceManager.niriViewportState(for: workspaceId)
+        var previous = state
+        previous.viewOffset -= 200
+        var spring = state
+        spring.springOffset(to: state.viewOffset)
+        controller.workspaceManager.animationDriver.reconcileViewportCommit(
+            workspaceId: workspaceId, previous: previous, next: state, transition: spring.offsetTransition
+        )
+        XCTAssertTrue(controller.workspaceManager.animationDriver.hasMotion(in: workspaceId))
+
+        overview.dismiss(reason: .selection, targetWindow: target, animated: false)
+
+        XCTAssertFalse(engine.hasAnyColumnAnimationsRunning(in: workspaceId))
+        XCTAssertFalse(engine.hasAnyWindowAnimationsRunning(in: workspaceId))
+        XCTAssertFalse(controller.workspaceManager.animationDriver.hasMotion(in: workspaceId))
+        XCTAssertFalse(controller.workspaceManager.niriViewportState(for: workspaceId).hasPendingOffsetAnimation)
+        let settled = try XCTUnwrap(controller.niriLayoutHandler.settledFrames(in: workspaceId)?[target.id])
+        while let task = refresh.layoutState.activeRefreshTask { await task.value }
+        XCTAssertEqual(engine.captureWindowFrames(in: workspaceId)[target.id], settled)
+    }
+
+    func testConsumeAndExpelPreserveOverviewViewportInBothOrientations() async throws {
+        for orientation in [Monitor.Orientation.horizontal, .vertical] {
+            let fixture = try makeFixture(layouts: [.niri, .niri, .niri])
+            let controller = fixture.controller
+            let workspaceId = fixture.workspaceIds[1]
+            controller.settings.monitors.updateOrientationSettings(
+                MonitorOrientationSettings(monitorName: fixture.monitor.name, orientation: orientation),
+                for: fixture.monitor
+            )
+            controller.syncMonitorsToNiriEngine()
+            var handles: [WindowHandle] = []
+            for index in 0 ..< 8 {
+                handles.append(try addManagedWindow(
+                    pid: 461_080, windowId: 80 + index, to: workspaceId, fixture: fixture
+                ))
+            }
+            let destination = fixture.workspaceIds[2]
+            for index in 0 ..< 2 {
+                _ = try addManagedWindow(pid: 461_081, windowId: 90 + index, to: destination, fixture: fixture)
+            }
+            let selected = handles[1]
+            let stationary = handles[0]
+            XCTAssertTrue(controller.workspaceManager.setActiveWorkspace(workspaceId, on: fixture.monitor.id))
+            XCTAssertTrue(controller.workspaceManager.setManagedFocus(selected.id, in: workspaceId))
+            let refresh = controller.layoutRefreshController
+            refresh.requestImmediateRelayout(reason: .overviewMutation, affectedWorkspaceIds: [workspaceId])
+            while let task = refresh.layoutState.activeRefreshTask { await task.value }
+            let overview = try prepareDragOverview(fixture).overview
+            overview.windowSession.createWindows(controller: overview, monitors: [fixture.monitor], palette: .default)
+            overview.windowSession.updateWindowDisplays(state: .open)
+            defer { overview.windowSession.closeWindows() }
+            let view = try XCTUnwrap(overview.windowSession.primaryOverviewWindow()?.contentView?.subviews
+                .compactMap { $0 as? OverviewView }.first)
+            overview.input.selectTab(selected, on: fixture.monitor.id)
+            overview.input.adjustScrollOffset(by: -80, on: fixture.monitor.id)
+            let ribbon = try XCTUnwrap(view.layout.workspaceSections.first { $0.workspaceId == workspaceId })
+            overview.input.panStrip(
+                at: CGPoint(x: ribbon.ribbonFrame.midX, y: ribbon.ribbonFrame.midY - view.layout.scrollOffset),
+                by: 30,
+                on: fixture.monitor.id
+            )
+            let axis = OverviewRibbonAxis(orientation)
+            for command in [
+                HotkeyCommand.windowMovement(.consumeIntoColumn),
+                .windowMovement(.expelFromColumn),
+                .column(.moveToLast)
+            ] {
+                let before = view.layout
+                let beforeFrame = try XCTUnwrap(before.window(for: stationary)?.overviewFrame)
+                XCTAssertTrue(overview.executeStructuralHotkey(command, selectedHandle: selected)?.didMutate == true)
+                while let task = refresh.layoutState.activeRefreshTask { await task.value }
+                let afterFrame = try XCTUnwrap(view.layout.window(for: stationary)?.overviewFrame)
+
+                XCTAssertEqual(
+                    view.layout.scrollOffset,
+                    before.scrollOffset,
+                    accuracy: 0.001,
+                    "\(orientation), \(command)"
+                )
+                XCTAssertEqual(
+                    axis.minimum(afterFrame),
+                    axis.minimum(beforeFrame),
+                    accuracy: 0.001,
+                    "\(orientation), \(command)"
+                )
+                XCTAssertEqual(
+                    view.layout.workspaceSections.map(\.ribbonFrame),
+                    before.workspaceSections.map(\.ribbonFrame)
+                )
+                XCTAssertEqual(overview.selectedWindowHandle, selected)
+                let snapshot = try XCTUnwrap(controller.niriLayoutHandler.overviewSnapshot(for: workspaceId)?.strip)
+                let viewportOrigin = snapshot.viewportPosition - (view.layout.stripPanByWorkspace[workspaceId] ?? 0)
+                overview.refreshCachedOverviewProjection(affectedWorkspaceIds: [workspaceId], revealingSelection: false)
+                XCTAssertEqual(
+                    snapshot.viewportPosition - (view.layout.stripPanByWorkspace[workspaceId] ?? 0),
+                    viewportOrigin,
+                    accuracy: 0.001
+                )
+            }
+            XCTAssertNotEqual(view.layout.stripPanRevealing(selected), 0)
+            overview.input.selectTab(selected, on: fixture.monitor.id)
+            XCTAssertEqual(view.layout.stripPanRevealing(selected), 0, accuracy: 0.001)
+            let sourceScrollOffset = view.layout.scrollOffset
+
+            XCTAssertTrue(overview.executeStructuralHotkey(.workspace(.moveTo(2)), selectedHandle: selected)?
+                .didMutate == true)
+            XCTAssertTrue(overview.executeStructuralHotkey(.column(.moveToFirst), selectedHandle: selected)?
+                .didMutate == true)
+            while let task = refresh.layoutState.activeRefreshTask { await task.value }
+
+            let movedFrame = try XCTUnwrap(view.layout.window(for: selected)?.overviewFrame)
+            XCTAssertEqual(view.layout.window(for: selected)?.workspaceId, destination)
+            XCTAssertNotEqual(view.layout.scrollOffset, sourceScrollOffset)
+            XCTAssertEqual(
+                view.layout.scrollOffset,
+                OverviewLayoutCalculator.scrollOffsetRevealing(
+                    targetFrame: movedFrame,
+                    currentOffset: view.layout.scrollOffset,
+                    layout: view.layout,
+                    screenFrame: OverviewLayoutCalculator.viewportFrame(for: fixture.monitor.frame)
+                ),
+                accuracy: 0.001
+            )
+        }
+    }
+
     private func makeFixture(layouts: [LayoutType]) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("OmniWMOverviewStructuralCommandTests-\(UUID().uuidString)", isDirectory: true)
@@ -1083,6 +1395,7 @@ final class OverviewStructuralCommandTests: XCTestCase {
                 activateApp: { focusRecorder.activatedPIDs.append($0) },
                 focusSpecificWindow: { pid, windowId, _ in
                     focusRecorder.focusedTokens.append(WindowToken(pid: pid, windowId: Int(windowId)))
+                    focusRecorder.onFocus?()
                 },
                 raiseWindow: { _ in focusRecorder.raisedCount += 1 }
             )
@@ -1176,7 +1489,7 @@ final class OverviewStructuralCommandTests: XCTestCase {
         for workspaceId in fixture.workspaceIds
             where workspaceManager.activeLayoutKind(for: workspaceId) == .niri
         {
-            niriSnapshots[workspaceId] = fixture.controller.niriEngine?.overviewSnapshot(for: workspaceId)
+            niriSnapshots[workspaceId] = fixture.controller.niriLayoutHandler.overviewSnapshot(for: workspaceId)
         }
         let layout = OverviewLayoutCalculator(
             screenFrame: OverviewLayoutCalculator.viewportFrame(for: fixture.monitor.frame),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 @testable import OmniWM
@@ -10,7 +10,11 @@ final class OverviewSettingsTOMLTests: XCTestCase {
         let defaults = SettingsExport.defaults()
 
         XCTAssertEqual(defaults.overview.zoom, 1.0)
-        XCTAssertEqual(defaults.overview.backdrop, color(0.05, 0.05, 0.08, 1.0))
+        XCTAssertEqual(defaults.overview.invertScrollDirection, false)
+        XCTAssertEqual(defaults.overview.mouseScrollSpeed, 1)
+        XCTAssertNil(defaults.overview.mouseButton)
+        XCTAssertEqual(defaults.overview.backdrop, color(0.05, 0.05, 0.08, 0))
+        XCTAssertEqual(defaults.overview.matchFocusBorder, true)
         XCTAssertEqual(defaults.overview.windowBorders.normal, color(0.3, 0.3, 0.35, 0.5))
         XCTAssertEqual(defaults.overview.windowBorders.hovered, color(0.4, 0.6, 1.0, 1.0))
         XCTAssertEqual(defaults.overview.windowBorders.selected, color(0.3, 0.8, 0.4, 1.0))
@@ -19,10 +23,14 @@ final class OverviewSettingsTOMLTests: XCTestCase {
     func testRoundTripsCanonicalOverviewTables() throws {
         var export = SettingsExport.defaults()
         export.overview.zoom = 1.25
+        export.overview.invertScrollDirection = true
+        export.overview.mouseScrollSpeed = 1.75
+        export.overview.mouseButton = 4
         export.overview.backdrop = color(0.1, 0.2, 0.3, 0.4)
         export.overview.windowBorders.normal = color(0.2, 0.3, 0.4, 0.5)
         export.overview.windowBorders.hovered = color(0.3, 0.4, 0.5, 0.6)
         export.overview.windowBorders.selected = color(0.4, 0.5, 0.6, 0.7)
+        export.overview.matchFocusBorder = false
 
         let data = try SettingsTOMLCodec.encode(export)
         let toml = String(decoding: data, as: UTF8.self)
@@ -34,10 +42,64 @@ final class OverviewSettingsTOMLTests: XCTestCase {
         XCTAssertTrue(toml.contains("[overview.windowBorders.hovered]"))
         XCTAssertTrue(toml.contains("[overview.windowBorders.selected]"))
         XCTAssertEqual(decoded.overview.zoom, export.overview.zoom)
+        XCTAssertEqual(decoded.overview.invertScrollDirection, true)
+        XCTAssertEqual(decoded.overview.mouseScrollSpeed, 1.75)
+        XCTAssertEqual(decoded.overview.mouseButton, 4)
         XCTAssertEqual(decoded.overview.backdrop, export.overview.backdrop)
         XCTAssertEqual(decoded.overview.windowBorders.normal, export.overview.windowBorders.normal)
         XCTAssertEqual(decoded.overview.windowBorders.hovered, export.overview.windowBorders.hovered)
         XCTAssertEqual(decoded.overview.windowBorders.selected, export.overview.windowBorders.selected)
+        XCTAssertEqual(decoded.overview.matchFocusBorder, false)
+    }
+
+    @MainActor
+    func testAppearanceFollowsFocusBorderUnlessDetached() {
+        let settings = makeSettingsStore()
+        settings.borders.enabled = true
+        settings.borders.width = 9
+        settings.borders.color = SettingsColor(red: 0.9, green: 0.1, blue: 0.2, alpha: 1)
+        settings.borders.darkColor = SettingsColor(red: 0.1, green: 0.9, blue: 0.2, alpha: 1)
+        settings.borders.gradient = BorderGradient(
+            enabled: true,
+            start: SettingsColor(red: 1, green: 0, blue: 0, alpha: 1),
+            end: SettingsColor(red: 0, green: 0, blue: 1, alpha: 1),
+            direction: .topLeftToBottomRight,
+            dark: nil
+        )
+        let darkStart = SettingsColor(red: 0.6, green: 0.2, blue: 0.8, alpha: 1)
+        let darkGlow = SettingsColor(red: 0.8, green: 0.3, blue: 0.1, alpha: 1)
+        settings.borders.gradient?.dark = BorderGradientColors(start: darkStart, end: nil)
+        settings.borders.glow = BorderGlow(enabled: true, radius: 12, opacity: 0.6, darkColor: darkGlow)
+        settings.overview.selectedBorderColor = SettingsColor(red: 0.3, green: 0.8, blue: 0.4, alpha: 1)
+
+        settings.overview.matchFocusBorder = true
+        XCTAssertEqual(OverviewAppearance(settings: settings, isDark: false).selectedBorder, settings.borders.color)
+        XCTAssertEqual(OverviewAppearance(settings: settings, isDark: true).selectedBorder, settings.borders.darkColor)
+        XCTAssertEqual(OverviewAppearance(settings: settings, isDark: false).focusBorder?.gradient?.enabled, true)
+
+        let matched = OverviewAppearance(settings: settings, isDark: true)
+        XCTAssertEqual(matched.focusBorder?.enabled, true)
+        XCTAssertEqual(matched.focusBorder?.width, 9)
+        XCTAssertEqual(matched.focusBorder?.gradient?.start, darkStart)
+        XCTAssertEqual(matched.focusBorder?.gradient?.end, settings.borders.gradient?.end)
+        XCTAssertNil(matched.focusBorder?.gradient?.dark)
+        XCTAssertEqual(matched.focusBorder?.glow?.color, darkGlow)
+        XCTAssertNil(matched.focusBorder?.glow?.darkColor)
+        settings.borders.enabled = false
+        XCTAssertEqual(OverviewAppearance(settings: settings, isDark: false).focusBorder?.enabled, false)
+
+        settings.overview.matchFocusBorder = false
+        let detached = OverviewAppearance(settings: settings, isDark: true)
+        XCTAssertEqual(detached.selectedBorder, settings.overview.selectedBorderColor)
+        XCTAssertNil(detached.focusBorder)
+    }
+
+    func testMissingMatchFocusBorderDefaultsToMatching() throws {
+        var export = SettingsExport.defaults()
+        export.overview.matchFocusBorder = nil
+        let toml = String(decoding: try SettingsTOMLCodec.encode(export), as: UTF8.self)
+        XCTAssertFalse(toml.contains("matchFocusBorder"))
+        XCTAssertEqual(try SettingsTOMLCodec.decode(Data(toml.utf8)).overview.matchFocusBorder, true)
     }
 
     func testMalformedOverviewTypesRejectDecode() throws {
@@ -75,7 +137,7 @@ final class OverviewSettingsTOMLTests: XCTestCase {
         settings.applyExport(export)
 
         XCTAssertEqual(settings.overview.zoom, defaults.overview.zoom)
-        XCTAssertEqual(settings.overview.backdropColor, color(0, 1, defaults.overview.backdrop.blue, 1))
+        XCTAssertEqual(settings.overview.backdropColor, color(0, 1, defaults.overview.backdrop.blue, 0))
         XCTAssertEqual(
             settings.overview.normalBorderColor,
             color(
@@ -132,6 +194,9 @@ final class OverviewSettingsTOMLTests: XCTestCase {
         )
 
         settings.overview.zoom = 1.25
+        settings.overview.invertScrollDirection = true
+        settings.overview.mouseScrollSpeed = 0.05
+        try settings.setOverviewMouseButton(2)
         settings.overview.backdropColor = color(0.1, 0.2, 0.3, 0.4)
         settings.overview.normalBorderColor = color(0.2, 0.3, 0.4, 0.5)
         settings.overview.hoveredBorderColor = color(0.3, 0.4, 0.5, 0.6)
@@ -139,10 +204,25 @@ final class OverviewSettingsTOMLTests: XCTestCase {
 
         let persisted = try SettingsTOMLCodec.decode(Data(contentsOf: persistence.fileURL))
         XCTAssertEqual(persisted.overview.zoom, settings.overview.zoom)
+        XCTAssertEqual(persisted.overview.invertScrollDirection, true)
+        XCTAssertEqual(persisted.overview.mouseScrollSpeed, 0.05)
+        XCTAssertEqual(persisted.overview.mouseButton, 2)
         XCTAssertEqual(persisted.overview.backdrop, settings.overview.backdropColor)
         XCTAssertEqual(persisted.overview.windowBorders.normal, settings.overview.normalBorderColor)
         XCTAssertEqual(persisted.overview.windowBorders.hovered, settings.overview.hoveredBorderColor)
         XCTAssertEqual(persisted.overview.windowBorders.selected, settings.overview.selectedBorderColor)
+    }
+
+    @MainActor
+    func testWheelSpeedLoadsWithinSupportedRange() {
+        let settings = makeSettingsStore()
+        for (value, expected) in [(0.0, 0.05), (0.05, 0.05), (2.0, 2.0), (3.0, 2.0), (.nan, 1.0)] {
+            var export = SettingsExport.defaults()
+            export.overview.mouseScrollSpeed = value
+            settings.applyExport(export)
+            XCTAssertEqual(settings.overview.mouseScrollSpeed, expected)
+            XCTAssertEqual(settings.toExport().overview.mouseScrollSpeed, expected)
+        }
     }
 
     private func color(_ red: Double, _ green: Double, _ blue: Double, _ alpha: Double) -> SettingsColor {

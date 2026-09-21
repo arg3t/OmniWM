@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import SwiftUI
 
@@ -7,12 +7,13 @@ struct OverviewSettingsTab: View {
     @Bindable var settings: SettingsStore
     @Bindable var controller: WMController
     @State private var pendingUpdate: Task<Void, Never>?
+    @State private var mouseButtonError: String?
 
     var body: some View {
         Form {
             Section("Layout") {
                 SettingsSliderRow(
-                    label: "Default Zoom",
+                    label: "Zoom",
                     value: Bindable(settings.overview).zoom,
                     range: 0.5 ... 1.5,
                     step: 0.05,
@@ -20,6 +21,40 @@ struct OverviewSettingsTab: View {
                 )
                 .onChange(of: settings.overview.zoom) { _, _ in
                     scheduleUpdate()
+                }
+                SettingsCaption("Zoom changes made in Overview are remembered when it closes.")
+            }
+
+            Section("Input") {
+                Toggle("Invert Scrolling Direction", isOn: Bindable(settings.overview).invertScrollDirection)
+                SettingsSliderRow(
+                    label: "Mouse Wheel Speed",
+                    value: Bindable(settings.overview).mouseScrollSpeed,
+                    range: 0.05 ... 2,
+                    step: 0.05,
+                    valueText: "\(Int((settings.overview.mouseScrollSpeed * 100).rounded()))%"
+                )
+                SettingsCaption("Adjusts mouse wheels. Trackpad scrolling keeps its normal speed.")
+                Picker("Toggle Overview Mouse Button", selection: Binding(
+                    get: { settings.overview.mouseButton },
+                    set: { button in
+                        do {
+                            try settings.setOverviewMouseButton(button)
+                            mouseButtonError = nil
+                        } catch {
+                            mouseButtonError = error.localizedDescription
+                        }
+                    }
+                )) {
+                    Text("Unassigned").tag(nil as Int64?)
+                    ForEach(Array(OverviewInputSettingsValidation.mouseButtons), id: \.self) { button in
+                        Text(OverviewInputSettingsValidation.buttonLabel(button)).tag(Optional(button))
+                            .disabled(settings.systemHyperTrigger.mouseButtonNumber == button)
+                    }
+                }
+                SettingsCaption("Press to open or close Overview. Buttons assigned to System Hyper are unavailable.")
+                if let mouseButtonError {
+                    SettingsCaption(mouseButtonError)
                 }
             }
 
@@ -39,11 +74,16 @@ struct OverviewSettingsTab: View {
                     selection: colorBinding(\.hoveredBorderColor),
                     supportsOpacity: true
                 )
+                Toggle("Selected Border Matches Focus Border", isOn: Bindable(settings.overview).matchFocusBorder)
+                    .onChange(of: settings.overview.matchFocusBorder) { _, _ in
+                        scheduleUpdate()
+                    }
                 ColorPicker(
                     "Selected Window Border",
                     selection: colorBinding(\.selectedBorderColor),
                     supportsOpacity: true
                 )
+                .disabled(settings.overview.matchFocusBorder)
             }
         }
         .formStyle(.grouped)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -29,6 +29,7 @@ extension NiriLayoutEngine {
             return nil
         }
 
+        let wasSingleWindow = singleWindowLayoutContext(in: sourceWorkspaceId) != nil
         let targetWorkspaceState = ensureState(for: targetWorkspaceId)
         let targetRoot = targetWorkspaceState.root
 
@@ -57,6 +58,7 @@ extension NiriLayoutEngine {
         targetWorkspaceState.index(window)
 
         cleanupEmptyColumn(sourceColumn, in: sourceWorkspaceId, state: &sourceState)
+        clearManualSpanOverridesOnSingleWindowEntry(in: sourceWorkspaceId, wasSingleWindow: wasSingleWindow)
 
         sourceState.selectedNodeId = fallbackSelection
 
@@ -86,6 +88,7 @@ extension NiriLayoutEngine {
             return nil
         }
 
+        let wasSingleWindow = singleWindowLayoutContext(in: sourceWorkspaceId) != nil
         let targetWorkspaceState = ensureState(for: targetWorkspaceId)
         let targetRoot = targetWorkspaceState.root
         let movedWindows = column.windowNodes
@@ -117,6 +120,7 @@ extension NiriLayoutEngine {
             sourceWorkspaceState.unindex(window)
             targetWorkspaceState.index(window)
         }
+        clearManualSpanOverridesOnSingleWindowEntry(in: sourceWorkspaceId, wasSingleWindow: wasSingleWindow)
 
         sourceState.selectedNodeId = fallbackSelection
 

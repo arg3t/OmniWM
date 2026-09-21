@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -147,6 +147,11 @@ extension NiriLayoutEngine {
     ) -> Int {
         guard !projectedColumns.isEmpty else { return 0 }
 
+        let durableIndex = state.activeColumnIndex
+        if let exactIndex = projectedColumns.firstIndex(where: { $0.durableIndex == durableIndex }) {
+            return exactIndex
+        }
+
         if let selectedNodeId = state.selectedNodeId,
            let selectedWindow = findNode(by: selectedNodeId, in: workspaceId) as? NiriWindow,
            !isExcludedFromProjection(selectedWindow.token, in: workspaceId),
@@ -154,11 +159,6 @@ extension NiriLayoutEngine {
            let projectedIndex = projectedColumns.firstIndex(where: { $0.column === selectedColumn })
         {
             return projectedIndex
-        }
-
-        let durableIndex = state.activeColumnIndex
-        if let exactIndex = projectedColumns.firstIndex(where: { $0.durableIndex == durableIndex }) {
-            return exactIndex
         }
 
         return projectedColumns.indices.min { lhs, rhs in
@@ -249,6 +249,22 @@ extension NiriLayoutEngine {
         }
 
         let contentInset = orientation == .horizontal && windows.count > 1 ? tabContentInset(for: column) : 0
+        let bounds = projectedPrimaryBounds(of: windows, orientation: orientation, contentInset: contentInset)
+        let clamped = NiriContainer.packedPrimarySpan(
+            max(rawSpan, bounds.min),
+            windows: windows,
+            orientation: orientation,
+            limit: availableSpace - gap * 2,
+            contentInset: contentInset
+        )
+        return bounds.max.map { min(clamped, $0) } ?? clamped
+    }
+
+    private func projectedPrimaryBounds(
+        of windows: [NiriWindow],
+        orientation: Monitor.Orientation,
+        contentInset: CGFloat
+    ) -> (min: CGFloat, max: CGFloat?) {
         var minimum: CGFloat = 1
         var maximum: CGFloat?
         for window in windows {
@@ -266,11 +282,7 @@ extension NiriLayoutEngine {
                 }
             }
         }
-        minimum += contentInset
-        maximum = maximum.map { max($0, minimum - contentInset) + contentInset }
-
-        let clamped = max(rawSpan, minimum)
-        return maximum.map { min(clamped, $0) } ?? clamped
+        return (minimum + contentInset, maximum.map { max($0, minimum) + contentInset })
     }
 
     func ensureProjectedSelectionVisible(

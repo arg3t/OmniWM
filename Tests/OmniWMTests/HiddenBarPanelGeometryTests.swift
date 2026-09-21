@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 @testable import OmniWM
 import XCTest
@@ -46,6 +46,11 @@ final class HiddenBarPanelGeometryTests: XCTestCase {
             windowLevel: .status,
             height: height,
             backgroundOpacity: 0.5,
+            inactiveIconOpacity: nil,
+            transparentBackground: false,
+            solidBlackBackground: false,
+            showItemBackgrounds: true,
+            showAccentHighlights: true,
             xOffset: xOffset,
             yOffset: yOffset,
             accentColor: nil,

@@ -1,7 +1,50 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
+import QuartzCore
+
+@MainActor
+final class OverviewDragAutoScroll: NSObject {
+    private var link: CADisplayLink?
+    private(set) var monitorId: Monitor.ID?
+    var pointer: CGPoint = .zero
+    var velocity: CGFloat = 0
+    var onTick: ((Monitor.ID, CGFloat) -> Void)?
+
+    func update(monitorId: Monitor.ID, pointer: CGPoint, velocity: CGFloat) {
+        self.pointer = pointer
+        guard velocity != 0 else {
+            stop()
+            return
+        }
+        if self.monitorId != monitorId || link == nil {
+            stop()
+            guard let screen = NSScreen.screens.first(where: { $0.displayId == monitorId.displayId }) else { return }
+            let link = screen.displayLink(target: self, selector: #selector(tick(_:)))
+            link.add(to: .main, forMode: .common)
+            self.link = link
+            self.monitorId = monitorId
+        }
+        self.velocity = velocity
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+        monitorId = nil
+        velocity = 0
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        advance(by: link.targetTimestamp - link.timestamp)
+    }
+
+    func advance(by duration: CFTimeInterval) {
+        guard let monitorId, velocity != 0 else { return }
+        onTick?(monitorId, velocity * CGFloat(duration))
+    }
+}
 
 @MainActor
 final class OverviewDragSession {
@@ -12,6 +55,7 @@ final class OverviewDragSession {
     private let structuralActions: OverviewStructuralActions
     private let mutationSession: OverviewMutationSession
     private var dragSession: OverviewStructuralActions.DragSession?
+    private let autoScroll = OverviewDragAutoScroll()
 
     private var state: OverviewState {
         overview?.state ?? .closed
@@ -45,15 +89,38 @@ final class OverviewDragSession {
 
     func connect(overview: OverviewController) {
         self.overview = overview
+        autoScroll.onTick = { [weak self] monitorId, delta in
+            self?.autoScrollStep(on: monitorId, by: delta)
+        }
     }
 
     func reset() {
+        autoScroll.stop()
         dragSession = nil
         windowSession.endDragPreview()
+        NSCursor.arrow.set()
+    }
+
+    private func autoScrollStep(on monitorId: Monitor.ID, by delta: CGFloat) {
+        guard dragSession != nil, case .open = state,
+              let before = projection.layoutsByMonitor[monitorId]?.scrollOffset
+        else {
+            autoScroll.stop()
+            return
+        }
+        projection.adjustScrollOffset(by: delta, on: monitorId)
+        guard projection.layoutsByMonitor[monitorId]?.scrollOffset != before else {
+            autoScroll.stop()
+            return
+        }
+        let resolution = resolveDragTarget(at: autoScroll.pointer, on: monitorId)
+        projection.setDragTarget(resolution.target, for: monitorId)
+        updateFeedback(resolution)
+        updateWindowDisplays()
     }
 
     private func updateWindowDisplays() {
-        windowSession.updateWindowDisplays(state: state)
+        windowSession.updateWindowDisplays(state: state, update: .immediate)
     }
 
     func beginDrag(on monitorId: Monitor.ID, handle: WindowHandle, startPoint: CGPoint) {
@@ -62,7 +129,9 @@ final class OverviewDragSession {
         else {
             return
         }
-        guard let entry = windowFacts.visibleManagedEntry(for: handle) else { return }
+        guard let entry = windowFacts.visibleManagedEntry(for: handle),
+              windowFacts.isStructurallyMutable(entry)
+        else { return }
 
         projection.activeInteractionMonitorId = monitorId
         dragSession = OverviewStructuralActions.DragSession(
@@ -80,40 +149,56 @@ final class OverviewDragSession {
                 cursorLocation: projection.globalPoint(from: startPoint, on: monitorId)
             )
         }
+        updateDrag(on: monitorId, at: startPoint)
     }
 
-    func updateDrag(on monitorId: Monitor.ID, at point: CGPoint) {
+    func updateDrag(on originMonitorId: Monitor.ID, at originPoint: CGPoint) {
         guard case .open = state else {
             cancelDrag()
             return
         }
         guard dragSession != nil else { return }
+        let (monitorId, point) = projection.pointerLocation(from: originPoint, on: originMonitorId)
+        let previousMonitorId = projection.activeInteractionMonitorId
         projection.activeInteractionMonitorId = monitorId
         windowSession.updateDragPreviewPosition(cursorLocation: projection.globalPoint(from: point, on: monitorId))
 
-        let target = resolveDragTarget(at: point, on: monitorId)
+        let resolution = resolveDragTarget(at: point, on: monitorId)
+        updateFeedback(resolution)
         let currentTarget = projection.layoutsByMonitor[monitorId]?.dragTarget
-        if target != currentTarget {
-            projection.setDragTarget(target, for: monitorId)
+        if previousMonitorId != monitorId || resolution.target != currentTarget {
+            projection.setDragTarget(resolution.target, for: monitorId)
             updateWindowDisplays()
         }
+        autoScroll.update(
+            monitorId: monitorId,
+            pointer: point,
+            velocity: OverviewLayoutCalculator.dragAutoScrollVelocity(
+                pointerY: point.y,
+                viewportFrame: projection.viewportFrame(for: monitorId),
+                scale: projection.layoutsByMonitor[monitorId]?.scale ?? 1
+            )
+        )
     }
 
-    func endDrag(on monitorId: Monitor.ID, at point: CGPoint) {
+    func endDrag(on originMonitorId: Monitor.ID, at originPoint: CGPoint) {
         guard case .open = state else {
             cancelDrag()
             return
         }
         guard let session = dragSession else { return }
+        autoScroll.stop()
+        let (monitorId, point) = projection.pointerLocation(from: originPoint, on: originMonitorId)
         projection.activeInteractionMonitorId = monitorId
         windowSession.updateDragPreviewPosition(cursorLocation: projection.globalPoint(from: point, on: monitorId))
 
-        let target = projection.layoutsByMonitor[monitorId]?.dragTarget
+        let resolution = resolveDragTarget(at: point, on: monitorId)
         projection.clearDragTargets()
         dragSession = nil
         windowSession.endDragPreview()
+        NSCursor.arrow.set()
 
-        guard let target else {
+        guard let target = resolution.target else {
             updateWindowDisplays()
             return
         }
@@ -125,6 +210,8 @@ final class OverviewDragSession {
         switch outcome {
         case let .changed(mutation):
             mutationSession.completeStructuralMutation(mutation)
+        case let .placedFloating(mutation, frame):
+            mutationSession.completeStructuralMutation(mutation, floatingPlacement: frame)
         case let .awaitingAdmission(mutation, deferredTarget):
             mutationSession.completeDeferredDragMutation(mutation, target: deferredTarget)
         case .unchanged:
@@ -133,14 +220,35 @@ final class OverviewDragSession {
     }
 
     func cancelDrag() {
+        autoScroll.stop()
         projection.clearDragTargets()
         dragSession = nil
         windowSession.endDragPreview()
+        NSCursor.arrow.set()
         updateWindowDisplays()
     }
 
-    private func resolveDragTarget(at point: CGPoint, on monitorId: Monitor.ID) -> OverviewDragTarget? {
-        guard let layout = projection.layoutsByMonitor[monitorId] else { return nil }
-        return layout.resolveDragTarget(at: point, draggedHandle: dragSession?.handle)
+    private func updateFeedback(_ resolution: OverviewDropResolution) {
+        let isValid = resolution.target != nil
+        windowSession.updateDragPreviewFeedback(resolution.label, isValid: isValid)
+        (isValid ? NSCursor.closedHand : NSCursor.operationNotAllowed).set()
+    }
+
+    private func resolveDragTarget(at point: CGPoint, on monitorId: Monitor.ID) -> OverviewDropResolution {
+        guard let session = dragSession,
+              let entry = windowFacts.visibleManagedEntry(for: session.handle),
+              entry.workspaceId == session.workspaceId,
+              windowFacts.isStructurallyMutable(entry),
+              let monitor = structuralActions.wmController?.workspaceManager.monitor(byId: monitorId),
+              let layout = projection.layoutsByMonitor[monitorId]
+        else { return .invalid }
+        let floatingSize = entry.mode == .floating
+            ? (windowFacts.floatingPreviewFrame(for: entry) ?? overviewSnapshot.windows[session.handle]?.frame)?.size
+            : nil
+        guard entry.mode != .floating || floatingSize != nil else { return .invalid }
+        return layout.resolveDrop(
+            at: point, draggedHandle: session.handle, sourceWorkspaceId: session.workspaceId,
+            floatingSize: floatingSize, monitor: monitor
+        )
     }
 }

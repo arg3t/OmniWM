@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -57,26 +57,5 @@ final class CommandPalettePanel {
         let x = screen.frame.midX - panelWidth / 2
         let y = screen.frame.midY - panelHeight / 2 + 80
         panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
-    }
-
-    private func findTextField(in view: NSView) -> NSTextField? {
-        if let textField = view as? NSTextField, textField.isEditable {
-            return textField
-        }
-        for subview in view.subviews {
-            if let found = findTextField(in: subview) {
-                return found
-            }
-        }
-        return nil
-    }
-
-    func focusSearchField() {
-        guard let contentView = panel?.contentView,
-              let textField = findTextField(in: contentView)
-        else {
-            return
-        }
-        panel?.makeFirstResponder(textField)
     }
 }

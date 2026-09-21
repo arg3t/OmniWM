@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
 
-struct ResizeEdge: OptionSet, Hashable {
+struct ResizeEdge: OptionSet, Hashable, CustomStringConvertible {
     let rawValue: UInt32
 
     static let top = ResizeEdge(rawValue: 0b0001)
@@ -12,6 +12,12 @@ struct ResizeEdge: OptionSet, Hashable {
     static let left = ResizeEdge(rawValue: 0b0100)
     static let right = ResizeEdge(rawValue: 0b1000)
     static let all: ResizeEdge = [.top, .bottom, .left, .right]
+
+    var description: String {
+        let names: [(ResizeEdge, String)] = [(.left, "left"), (.right, "right"), (.top, "top"), (.bottom, "bottom")]
+        let present = names.filter { contains($0.0) }.map(\.1)
+        return present.isEmpty ? "none" : present.joined(separator: "+")
+    }
 
     var hasHorizontal: Bool {
         !intersection([.left, .right]).isEmpty

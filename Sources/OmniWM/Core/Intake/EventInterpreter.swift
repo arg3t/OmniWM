@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 
@@ -107,7 +107,7 @@ final class EventInterpreter: EventIntakeSink {
         )
         switch visibility {
         case .hidden: controller.axEventHandler.handleAppHidden(pid: pid, source: .service)
-        case .visible: controller.axEventHandler.handleAppUnhidden(pid: pid, source: .service)
+        case .visible: controller.axEventHandler.handleNativeAppUnhide(pid: pid)
         }
     }
 

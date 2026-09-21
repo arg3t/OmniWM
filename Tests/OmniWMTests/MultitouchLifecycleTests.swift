@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreHID
@@ -537,6 +537,48 @@ final class MultitouchLifecycleTests: XCTestCase {
         old.sleeper.resumeAll()
         replacement.sleeper.resumeAll()
         await drainMultitouchTasks()
+    }
+
+    func testSuppliedDrainLocationDoesNotCountCursorSample() async {
+        let harness = makeHarness([FakeMultitouchBackend.enumeration([deviceA])])
+        harness.source.startLifecycle()
+        await runNext(harness)
+        harness.source.beginPerformanceCapture()
+        var locations: [CGPoint] = []
+        harness.source.onSnapshot = { locations.append($0.location) }
+        harness.backend.emitFrame(registryId: 101, touches: [(0.4, 0.5)], timestamp: 1)
+        harness.backend.emitFrame(registryId: 101, touches: [(0.5, 0.5)], timestamp: 1.01)
+        harness.backend.emitFrame(registryId: 101, touches: [], timestamp: 1.02)
+
+        let location = CGPoint(x: 200, y: 300)
+        harness.source.drainRawFrameMailbox(location: location)
+
+        XCTAssertEqual(locations, [location, location, location])
+        XCTAssertEqual(harness.source.performanceSnapshot()?.drainBatches, 1)
+        XCTAssertEqual(harness.source.performanceSnapshot()?.cursorSamples, 0)
+        await drainMultitouchTasks()
+        XCTAssertEqual(harness.source.endPerformanceCapture()?.cursorSamples, 0)
+        await shutdown(harness)
+    }
+
+    func testDrainSamplesCursorOncePerNonemptyBatch() async {
+        let harness = makeHarness([FakeMultitouchBackend.enumeration([deviceA])])
+        harness.source.startLifecycle()
+        await runNext(harness)
+        harness.source.beginPerformanceCapture()
+        harness.source.drainRawFrameMailbox()
+        XCTAssertEqual(harness.source.performanceSnapshot()?.cursorSamples, 0)
+        harness.backend.emitFrame(registryId: 101, touches: [(0.4, 0.5)], timestamp: 1)
+        harness.backend.emitFrame(registryId: 101, touches: [(0.5, 0.5)], timestamp: 1.01)
+        harness.backend.emitFrame(registryId: 101, touches: [], timestamp: 1.02)
+
+        harness.source.drainRawFrameMailbox()
+
+        XCTAssertEqual(harness.source.performanceSnapshot()?.drainBatches, 1)
+        XCTAssertEqual(harness.source.performanceSnapshot()?.cursorSamples, 1)
+        await drainMultitouchTasks()
+        XCTAssertEqual(harness.source.endPerformanceCapture()?.cursorSamples, 1)
+        await shutdown(harness)
     }
 
     func testPerformanceCountersSurviveSourceReplacement() async throws {

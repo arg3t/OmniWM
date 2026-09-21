@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreGraphics
@@ -10,7 +10,6 @@ enum OverviewRenderStyle {
     enum Colors {
         static let windowBackground = CGColor(red: 0.15, green: 0.15, blue: 0.18, alpha: 1.0)
         static let windowDimmed = CGColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.7)
-        static let infoBackground = CGColor(red: 0.1, green: 0.1, blue: 0.12, alpha: 0.9)
         static let closeButtonBackground = CGColor(red: 0.9, green: 0.3, blue: 0.3, alpha: 0.9)
         static let closeButtonHover = CGColor(red: 1.0, green: 0.4, blue: 0.4, alpha: 1.0)
         static let closeButtonX = CGColor(gray: 1.0, alpha: 1.0)
@@ -25,6 +24,10 @@ enum OverviewRenderStyle {
         static let columnBackground = CGColor(red: 0.12, green: 0.12, blue: 0.16, alpha: 0.6)
         static let columnBorder = CGColor(red: 0.25, green: 0.25, blue: 0.3, alpha: 1.0)
         static let columnDivider = CGColor(red: 0.2, green: 0.2, blue: 0.25, alpha: 0.8)
+        static let ribbonFallback = CGColor(red: 0.12, green: 0.12, blue: 0.16, alpha: 1.0)
+        static let ribbonShadeActive = CGColor(gray: 0, alpha: 0.12)
+        static let ribbonShadeInactive = CGColor(gray: 0, alpha: 0.12)
+        static let overflowPillBackground = CGColor(gray: 0.05, alpha: 0.82)
     }
 
     enum Metrics {
@@ -36,13 +39,11 @@ enum OverviewRenderStyle {
         static let thumbnailInset: CGFloat = 1
         static let searchBarCornerRadius: CGFloat = 10
         static let searchBarBorderWidth: CGFloat = 1.5
-        static let iconSize: CGFloat = 24
-        static let groupBadgeHeight: CGFloat = 22
-        static let groupBadgePadding: CGFloat = 8
         static let dropLineHeight: CGFloat = 4
         static let dropOutlineWidth: CGFloat = 3
         static let dropLineWidth: CGFloat = 4
         static let columnCornerRadius: CGFloat = 10
         static let dividerHeight: CGFloat = 2
+        static let ribbonCornerRadius: CGFloat = 12
     }
 }

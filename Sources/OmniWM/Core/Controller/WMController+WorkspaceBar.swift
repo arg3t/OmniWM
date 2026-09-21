@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -162,11 +162,16 @@ extension WMController {
     func isWorkspaceBarVisible(on monitor: Monitor, resolved: ResolvedBarSettings? = nil) -> Bool {
         let effective = resolved ?? settings.workspaceBar.resolved(for: monitor)
         guard isWorkspaceBarConfiguredVisible(on: monitor, resolved: effective) else { return false }
-        return !isWorkspaceBarSuppressedByNativeFullscreen(on: monitor)
+        return !isWorkspaceBarSuppressedByNativeFullscreen(on: monitor, resolved: effective)
     }
 
-    private func isWorkspaceBarSuppressedByNativeFullscreen(on monitor: Monitor) -> Bool {
-        guard settings.workspaceBar.hideInNativeFullscreen else { return false }
+    private func isWorkspaceBarSuppressedByNativeFullscreen(
+        on monitor: Monitor,
+        resolved: ResolvedBarSettings
+    ) -> Bool {
+        guard settings.workspaceBar.hideInNativeFullscreen || resolved.notchMode == .fillLeftOfNotch else {
+            return false
+        }
         let topology = workspaceManager.spaceTopology
         guard topology.isPopulated else { return false }
         return topology.isDisplayShowingFullscreenSpace(on: monitor) == true

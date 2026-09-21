@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -18,7 +18,7 @@ extension AXManager {
         } else {
             guard let app = NSRunningApplication(processIdentifier: newWindow.token.pid),
                   !app.isTerminated,
-                  let created = try? await AppAXContextRegistry.getOrCreate(app)
+                  let created = try? await AppAXContextRegistry.getOrCreate(app, pid: newWindow.token.pid)
             else {
                 return nil
             }

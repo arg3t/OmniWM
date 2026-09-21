@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -62,6 +62,17 @@ final class NiriColumnTransferFeasibilityTests: XCTestCase {
         XCTAssertFalse(consume(&fixture, window: fixture.windows[1], into: targetColumn))
         XCTAssertEqual(targetColumn.windowNodes.count, 1)
         XCTAssertEqual(fixture.engine.columns(in: fixture.workspaceId).count, 2)
+    }
+
+    func testPackingHintsDoNotAffectTransferFeasibility() {
+        var fixture = makeFixture(minHeights: [100, 100])
+        for window in fixture.windows {
+            window.packingHints = ObservedPackingHints(height: ObservedAxisHint(requested: 780, observed: 790))
+        }
+        let targetColumn = fixture.engine.columns(in: fixture.workspaceId)[0]
+
+        XCTAssertTrue(consume(&fixture, window: fixture.windows[1], into: targetColumn))
+        XCTAssertEqual(targetColumn.windowNodes.count, 2)
     }
 
     func testConsumeAllowedWhenMinHeightsFit() {

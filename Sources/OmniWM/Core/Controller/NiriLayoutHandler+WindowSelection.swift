@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -23,6 +23,7 @@ extension NiriLayoutHandler {
             pass.engine.updateWindowConstraints(
                 for: window.token,
                 constraints: window.constraints,
+                packingHints: window.packingHints,
                 in: pass.wsId,
                 motion: controller?.motionPolicy.snapshot() ?? .enabled
             )

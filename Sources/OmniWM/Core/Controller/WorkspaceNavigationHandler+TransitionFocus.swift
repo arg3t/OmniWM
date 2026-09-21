@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -41,12 +41,14 @@ extension WorkspaceNavigationHandler {
             controller.intentLedger.discardPendingFocus(canceledRequest.token)
         }
         _ = controller.workspaceManager.clearNativeFocusOwner()
+        controller.windowFocusOperations.activateApp(getpid())
     }
 
     func commitWorkspaceTransitionFocusHandoff(
         targetWorkspaceId: WorkspaceDescriptor.ID,
         monitor: Monitor?,
-        startScrollAnimation: Bool
+        startScrollAnimation: Bool,
+        affectedWorkspaces: Set<WorkspaceDescriptor.ID> = []
     ) {
         guard let controller else { return }
         let handoff = resolveWorkspaceTransitionFocusHandoff(for: targetWorkspaceId)
@@ -67,6 +69,7 @@ extension WorkspaceNavigationHandler {
             }
         }
         controller.layoutRefreshController.commitWorkspaceTransition(
+            affectedWorkspaces: affectedWorkspaces,
             reason: .workspaceTransition,
             postLayout: handoffAction,
             postLayoutInvalidated: { [weak controller] in

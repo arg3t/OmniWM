@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -34,8 +34,15 @@ final class OverviewWindowFacts {
             title: title.isEmpty ? (appInfo?.name ?? "Window") : title,
             appName: appInfo?.name ?? "Unknown",
             appIcon: appInfo?.icon,
-            frame: preferredFrame ?? environment.windowFrame(entry) ?? .zero
+            frame: preferredFrame ?? environment.windowFrame(entry) ?? .zero,
+            isNativeFullscreen: entry.layoutReason == .nativeFullscreen,
+            floatingPreviewFrame: floatingPreviewFrame(for: entry)
         )
+    }
+
+    func floatingPreviewFrame(for entry: WindowState) -> CGRect? {
+        guard entry.mode == .floating else { return nil }
+        return entry.desiredState.floatingFrame ?? entry.floatingState?.lastFrame
     }
 
     func visibleManagedEntry(for handle: WindowHandle) -> WindowState? {
@@ -53,8 +60,11 @@ final class OverviewWindowFacts {
         _ entry: WindowState,
         workspaceManager: WorkspaceManager
     ) -> Bool {
+        !workspaceManager.isAppHidden(pid: entry.pid)
+    }
+
+    func isStructurallyMutable(_ entry: WindowState) -> Bool {
         entry.layoutReason == .standard
-            && !workspaceManager.isAppHidden(pid: entry.pid)
     }
 
     func cachedNiriSnapshot(
@@ -72,21 +82,12 @@ final class OverviewWindowFacts {
             }
             guard !tiles.isEmpty else { return nil }
             return NiriOverviewColumnSnapshot(
-                index: 0,
-                widthWeight: column.widthWeight,
-                preferredWidth: column.preferredWidth,
-                tiles: tiles
-            )
-        }.enumerated().map { index, column in
-            NiriOverviewColumnSnapshot(
-                index: index,
-                widthWeight: column.widthWeight,
-                preferredWidth: column.preferredWidth,
-                tiles: column.tiles
+                index: column.index, widthWeight: column.widthWeight, preferredWidth: column.preferredWidth,
+                tiles: tiles, stripFrame: column.stripFrame, isTabbed: column.isTabbed, activeToken: column.activeToken
             )
         }
         guard !columns.isEmpty else { return nil }
-        return NiriOverviewWorkspaceSnapshot(workspaceId: snapshot.workspaceId, columns: columns)
+        return NiriOverviewWorkspaceSnapshot(workspaceId: snapshot.workspaceId, columns: columns, strip: snapshot.strip)
     }
 
     func isNiriLayout(workspaceId: WorkspaceDescriptor.ID) -> Bool {

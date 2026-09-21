@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import SwiftUI
 
@@ -63,6 +63,8 @@ struct SettingsSliderRow: View {
     let step: Double
     let valueText: String
     var valueWidth: CGFloat = 56
+    var resetAction: (() -> Void)?
+    var resetHelp = "Reset to Default"
 
     var body: some View {
         LabeledContent(label) {
@@ -75,6 +77,9 @@ struct SettingsSliderRow: View {
                 .accessibilityValue(valueText)
 
                 SettingsValueText(text: valueText, width: valueWidth)
+                if let resetAction {
+                    ResetIconButton(title: resetHelp, action: resetAction)
+                }
             }
         }
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import SwiftUI
@@ -57,7 +57,7 @@ struct GeneralSettingsTab: View {
 
     var body: some View {
         let animationsEnabled = Binding(
-            get: { controller.motionPolicy.animationsEnabled },
+            get: { controller.motionPolicy.userAnimationsEnabled },
             set: { controller.setAnimationsEnabled($0) }
         )
         let startAtLogin = Binding(
@@ -78,8 +78,19 @@ struct GeneralSettingsTab: View {
 
                 SettingsCaption("Controls the appearance of menus and workspace bar")
 
+                Toggle("Show app icons in tab rails", isOn: Binding(
+                    get: { settings.tabRailAppIcons },
+                    set: { controller.setTabRailAppIcons($0) }
+                ))
+                SettingsCaption("Replaces compact markers with app icons. Applies to Niri and Dwindle.")
+
                 Toggle("Enable Animations", isOn: animationsEnabled)
-                SettingsCaption("Turns OmniWM-authored animations on or off live without relaunching.")
+                    .disabled(controller.motionPolicy.systemReducesMotion)
+                SettingsCaption(
+                    controller.motionPolicy.systemReducesMotion
+                        ? "Off while macOS Reduce Motion is on."
+                        : "Turns OmniWM-authored animations on or off live without relaunching."
+                )
 
                 AppWindowCornerSettings(preferences: windowCornerPreferences)
             }

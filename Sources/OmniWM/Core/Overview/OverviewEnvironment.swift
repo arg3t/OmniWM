@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -15,6 +15,7 @@ enum OverviewHotkeyDisposition: Equatable {
 
 enum OverviewPhysicalHotkeyAction: Equatable {
     case dismissSelection
+    case activateSelection
     case closeSelection
 }
 
@@ -39,7 +40,6 @@ struct OverviewEnvironment {
     }
 
     var notificationCenter: NotificationCenter = .default
-    var selectionDismissDelayNanoseconds: UInt64 = 50_000_000
     var schedulePostCloseHandoff: (@escaping @MainActor () -> Void) -> Void = { handoff in
         Task { @MainActor in
             await Task.yield()
@@ -60,10 +60,15 @@ struct OverviewEnvironment {
 }
 
 struct DwindleOverviewWorkspaceProjection {
+    struct Group {
+        let id: DwindleTileId
+        let tokens: [WindowToken]
+        let activeToken: WindowToken
+    }
+
     let eligibleTokens: Set<WindowToken>
-    let inactiveTokens: Set<WindowToken>
     let frames: [WindowToken: CGRect]
-    let groupCountByToken: [WindowToken: Int]
+    let groups: [Group]
 
     init(
         engine: DwindleLayoutEngine,
@@ -72,37 +77,32 @@ struct DwindleOverviewWorkspaceProjection {
     ) {
         self.eligibleTokens = eligibleTokens
 
-        var inactiveTokens = engine.inactiveGroupTokens(in: workspaceId)
-        var frames = engine.currentFrames(in: workspaceId)
+        var frames = engine.currentFrames(in: workspaceId).filter { eligibleTokens.contains($0.key) }
+        var groups: [Group] = []
 
-        var groupCounts: [WindowToken: Int] = [:]
         for snapshot in engine.groupedTileSnapshots(in: workspaceId) {
-            let eligibleMembers = snapshot.members.filter { eligibleTokens.contains($0.token) }
-            let representative = eligibleMembers.first { $0.token == snapshot.activeToken }
-                ?? eligibleMembers.first
-            let frame = frames[snapshot.activeToken] ?? snapshot.contentFrame ?? snapshot.tileFrame
-
-            inactiveTokens.formUnion(snapshot.members.map(\.token))
-            for member in snapshot.members {
-                frames.removeValue(forKey: member.token)
-            }
-
-            guard let representative else { continue }
-            inactiveTokens.remove(representative.token)
+            let tokens = snapshot.members.compactMap { eligibleTokens.contains($0.token) ? $0.token : nil }
+            guard let firstToken = tokens.first else { continue }
+            let frame = snapshot.contentFrame ?? snapshot.tileFrame
             if let frame {
-                frames[representative.token] = frame
+                for token in tokens {
+                    frames[token] = frame
+                }
             }
-            if eligibleMembers.count > 1 {
-                groupCounts[representative.token] = eligibleMembers.count
+            if tokens.count > 1 {
+                groups.append(Group(
+                    id: snapshot.id,
+                    tokens: tokens,
+                    activeToken: tokens.contains(snapshot.activeToken) ? snapshot.activeToken : firstToken
+                ))
             }
         }
-        self.inactiveTokens = inactiveTokens
         self.frames = frames
-        groupCountByToken = groupCounts
+        self.groups = groups
     }
 
     func includes(_ token: WindowToken) -> Bool {
-        eligibleTokens.contains(token) && !inactiveTokens.contains(token)
+        eligibleTokens.contains(token)
     }
 }
 
@@ -110,6 +110,7 @@ extension OverviewController {
     enum OverviewDismissReason {
         case cancel
         case selection
+        case workspaceActivation
         case externalDeactivation
 
         var shouldRestorePreviousApplication: Bool {
@@ -117,6 +118,7 @@ extension OverviewController {
             case .cancel:
                 true
             case .selection,
+                 .workspaceActivation,
                  .externalDeactivation:
                 false
             }

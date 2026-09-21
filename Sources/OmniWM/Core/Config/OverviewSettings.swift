@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Observation
 
@@ -9,6 +9,18 @@ final class OverviewSettings {
     @ObservationIgnored var onChange: (() -> Void)?
 
     var zoom = OverviewSettings.defaults.zoom {
+        didSet { onChange?() }
+    }
+
+    var invertScrollDirection = false {
+        didSet { onChange?() }
+    }
+
+    var mouseScrollSpeed = 1.0 {
+        didSet { onChange?() }
+    }
+
+    var mouseButton: Int64? {
         didSet { onChange?() }
     }
 
@@ -28,6 +40,10 @@ final class OverviewSettings {
         didSet { onChange?() }
     }
 
+    var matchFocusBorder = OverviewSettings.defaults.matchFocusBorder ?? true {
+        didSet { onChange?() }
+    }
+
     func export() -> SettingsExport.Overview {
         SettingsExport.Overview(
             zoom: zoom,
@@ -36,12 +52,19 @@ final class OverviewSettings {
                 normal: normalBorderColor,
                 hovered: hoveredBorderColor,
                 selected: selectedBorderColor
-            )
+            ),
+            matchFocusBorder: matchFocusBorder,
+            invertScrollDirection: invertScrollDirection,
+            mouseScrollSpeed: mouseScrollSpeed,
+            mouseButton: mouseButton
         )
     }
 
     func apply(_ values: SettingsExport.Overview, baseline: SettingsExport.Overview) {
         zoom = Self.validatedZoom(values.zoom)
+        invertScrollDirection = values.invertScrollDirection ?? false
+        mouseScrollSpeed = Self.validatedMouseScrollSpeed(values.mouseScrollSpeed ?? 1)
+        mouseButton = values.mouseButton
         backdropColor = Self.validatedColor(values.backdrop, default: baseline.backdrop)
         normalBorderColor = Self.validatedColor(
             values.windowBorders.normal,
@@ -55,11 +78,16 @@ final class OverviewSettings {
             values.windowBorders.selected,
             default: baseline.windowBorders.selected
         )
+        matchFocusBorder = values.matchFocusBorder ?? baseline.matchFocusBorder ?? true
     }
 
     private static func validatedZoom(_ value: Double) -> Double {
         guard value.isFinite else { return defaults.zoom }
         return min(1.5, max(0.5, value))
+    }
+
+    nonisolated static func validatedMouseScrollSpeed(_ value: Double) -> Double {
+        value.isFinite ? min(2, max(0.05, value)) : 1
     }
 
     private static func validatedColor(_ color: SettingsColor, default defaultColor: SettingsColor) -> SettingsColor {

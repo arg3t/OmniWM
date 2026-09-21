@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -10,12 +10,16 @@ extension NiriLayoutHandler {
     func moveWindow(direction: Direction) -> WindowMoveOutcome {
         guard let handle = selectedWindowHandleInActiveWorkspace() else { return .blocked }
         let outcome = moveWindow(handle: handle, direction: direction)
-        return commitWindowMoveOutcome(outcome)
+        return commitWindowMoveOutcome(outcome, handle: handle, direction: direction)
     }
 
-    private func commitWindowMoveOutcome(_ outcome: StructuralMutationOutcome) -> WindowMoveOutcome {
+    private func commitWindowMoveOutcome(
+        _ outcome: StructuralMutationOutcome,
+        handle: WindowHandle,
+        direction: Direction
+    ) -> WindowMoveOutcome {
         commitNormalStructuralMutation(outcome)
-        return switch outcome {
+        let moveOutcome: WindowMoveOutcome = switch outcome {
         case .changed:
             .movedWithinWorkspace
         case .atWorkspaceEdge:
@@ -23,6 +27,12 @@ extension NiriLayoutHandler {
         case .unchanged:
             .blocked
         }
+        NiriLayoutTrace.record(
+            .move,
+            workspaceId: controller?.workspaceManager.entry(for: handle.id)?.workspaceId,
+            "\(direction) win=\(handle.id.windowId) outcome=\(moveOutcome)"
+        )
+        return moveOutcome
     }
 
     func moveWindow(handle: WindowHandle, direction: Direction) -> StructuralMutationOutcome {
@@ -81,7 +91,9 @@ extension NiriLayoutHandler {
     func moveWindowWithinContainer(direction: Direction) -> WindowMoveOutcome {
         guard let handle = selectedWindowHandleInActiveWorkspace() else { return .blocked }
         return commitWindowMoveOutcome(
-            moveWindowWithinContainer(handle: handle, direction: direction)
+            moveWindowWithinContainer(handle: handle, direction: direction),
+            handle: handle,
+            direction: direction
         )
     }
 

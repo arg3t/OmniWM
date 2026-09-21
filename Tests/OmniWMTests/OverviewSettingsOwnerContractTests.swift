@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 import Observation
@@ -68,7 +68,7 @@ final class OverviewSettingsOwnerContractTests: XCTestCase {
 
         XCTAssertEqual(changes.snapshot(), ["zoom", "backdrop", "normal", "hovered", "selected"])
         XCTAssertEqual(settings.overview.zoom, SettingsExport.defaults().overview.zoom)
-        XCTAssertEqual(settings.overview.backdropColor, SettingsColor(red: 0, green: 1, blue: 0.08, alpha: 1))
+        XCTAssertEqual(settings.overview.backdropColor, SettingsColor(red: 0, green: 1, blue: 0.08, alpha: 0))
         XCTAssertEqual(try Data(contentsOf: settings.settingsFileURL), originalData)
         settings.overview.zoom = 1.25
         XCTAssertEqual(try saved(settings), settings.toExport())

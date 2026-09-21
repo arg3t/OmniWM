@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreText
@@ -39,7 +39,11 @@ final class NativeFullscreenPlaceholderWindow: NSPanel {
         slotFrame = placeholder.frame
         displayContext = placeholder.displayContext
         descriptorVisible = placeholder.visible
-        placeholderView = NativeFullscreenPlaceholderView(appName: appName, icon: icon)
+        placeholderView = NativeFullscreenPlaceholderView(
+            windowTitle: placeholder.windowTitle,
+            appName: appName,
+            icon: icon
+        )
         super.init(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -90,6 +94,7 @@ final class NativeFullscreenPlaceholderWindow: NSPanel {
         slotFrame = update.frame
         displayContext = update.displayContext
         descriptorVisible = update.visible
+        placeholderView.setWindowTitle(update.windowTitle)
         placeholderView.setSelected(update.selected)
         reconcileGeometry(forceOrdering: forceOrdering)
     }

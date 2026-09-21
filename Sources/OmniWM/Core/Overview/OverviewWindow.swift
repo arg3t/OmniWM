@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -19,13 +19,31 @@ final class OverviewWindow: NSPanel {
 
     var onWindowSelected: ((Monitor.ID, WindowHandle) -> Void)?
     var onWindowClosed: ((Monitor.ID, WindowHandle) -> Void)?
+    var onNewWorkspace: ((Monitor.ID) -> Void)?
+    var onTabSelected: ((Monitor.ID, WindowHandle) -> Void)?
+    var onClearSearch: ((Monitor.ID) -> Void)?
+    var isTabPickerOpen: Bool {
+        overlayView.isTabPickerOpen
+    }
+
+    var onStripPan: ((Monitor.ID, CGPoint, CGFloat) -> Void)?
+    var onWorkspaceSelected: ((Monitor.ID, WorkspaceDescriptor.ID) -> Void)?
+    var onOverflowPillPressed: ((Monitor.ID, OverviewOverflowPill) -> Void)?
     var onDismiss: ((Monitor.ID) -> Void)?
     var onScroll: ((Monitor.ID, CGFloat) -> Void)?
-    var onScrollWithModifiers: ((Monitor.ID, CGFloat, NSEvent.ModifierFlags, Bool) -> Void)?
+    var onScrollEvent: ((Monitor.ID, OverviewScrollInput.Event) -> Void)?
     var onDragBegin: ((Monitor.ID, WindowHandle, CGPoint) -> Void)?
     var onDragUpdate: ((Monitor.ID, CGPoint) -> Void)?
     var onDragEnd: ((Monitor.ID, CGPoint) -> Void)?
-    var onDragCancel: (() -> Void)?
+    var previewForHandle: ((WindowHandle) -> OverviewPreviewFrame?)? {
+        get { overlayView.layerRenderer.previewForHandle }
+        set { overlayView.layerRenderer.previewForHandle = newValue }
+    }
+
+    var wallpaperForDisplay: ((CGDirectDisplayID, Int) -> CGImage?)? {
+        get { overlayView.layerRenderer.wallpaperForDisplay }
+        set { overlayView.layerRenderer.wallpaperForDisplay = newValue }
+    }
 
     init(monitor: Monitor, palette: OverviewRenderPalette = .default) {
         self.monitor = monitor
@@ -57,11 +75,24 @@ final class OverviewWindow: NSPanel {
         isReleasedWhenClosed = false
         acceptsMouseMovedEvents = true
 
-        contentView = overlayView
-        overlayView.frame = CGRect(origin: .zero, size: monitor.frame.size)
+        let bounds = CGRect(origin: .zero, size: monitor.frame.size)
+        let container = NSView(frame: bounds)
+        let glass = NSGlassEffectView(frame: bounds)
+        glass.style = .regular
+        glass.appearance = NSAppearance(named: .darkAqua)
+        glass.wantsLayer = true
+        glass.layer?.opacity = 0
+        glass.autoresizingMask = [.width, .height]
+        overlayView.frame = bounds
+        overlayView.autoresizingMask = [.width, .height]
+        container.addSubview(glass)
+        container.addSubview(overlayView)
+        overlayView.layerRenderer.glassLayer = glass.layer
+        contentView = container
     }
 
     private func bindOverlayEvents() {
+        bindRibbonEvents()
         overlayView.onWindowSelected = { [weak self] handle in
             guard let self else { return }
             self.onWindowSelected?(self.monitor.id, handle)
@@ -69,6 +100,14 @@ final class OverviewWindow: NSPanel {
         overlayView.onWindowClosed = { [weak self] handle in
             guard let self else { return }
             self.onWindowClosed?(self.monitor.id, handle)
+        }
+        overlayView.onWorkspaceSelected = { [weak self] workspaceId in
+            guard let self else { return }
+            self.onWorkspaceSelected?(self.monitor.id, workspaceId)
+        }
+        overlayView.onOverflowPillPressed = { [weak self] pill in
+            guard let self else { return }
+            self.onOverflowPillPressed?(self.monitor.id, pill)
         }
         overlayView.onDismiss = { [weak self] in
             guard let self else { return }
@@ -78,9 +117,9 @@ final class OverviewWindow: NSPanel {
             guard let self else { return }
             self.onScroll?(self.monitor.id, delta)
         }
-        overlayView.onScrollWithModifiers = { [weak self] delta, modifiers, isPrecise in
+        overlayView.onScrollEvent = { [weak self] event in
             guard let self else { return }
-            self.onScrollWithModifiers?(self.monitor.id, delta, modifiers, isPrecise)
+            self.onScrollEvent?(self.monitor.id, event)
         }
         overlayView.onDragBegin = { [weak self] handle, start in
             guard let self else { return }
@@ -94,8 +133,24 @@ final class OverviewWindow: NSPanel {
             guard let self else { return }
             self.onDragEnd?(self.monitor.id, point)
         }
-        overlayView.onDragCancel = { [weak self] in
-            self?.onDragCancel?()
+    }
+
+    private func bindRibbonEvents() {
+        overlayView.onClearSearch = { [weak self] in
+            guard let self else { return }
+            self.onClearSearch?(self.monitor.id)
+        }
+        overlayView.onNewWorkspace = { [weak self] in
+            guard let self else { return }
+            self.onNewWorkspace?(self.monitor.id)
+        }
+        overlayView.onTabSelected = { [weak self] handle in
+            guard let self else { return }
+            self.onTabSelected?(self.monitor.id, handle)
+        }
+        overlayView.onStripPan = { [weak self] point, delta in
+            guard let self else { return }
+            self.onStripPan?(self.monitor.id, point, delta)
         }
     }
 
@@ -119,13 +174,10 @@ final class OverviewWindow: NSPanel {
     }
 
     func hide() {
+        overlayView.closeTabPicker()
         overlayView.cancelAnimation()
         overlayView.clearPreviews()
         orderOut(nil)
-    }
-
-    func cancelPendingDragIfNeeded(optionPressed: Bool) {
-        overlayView.cancelPendingDragIfNeeded(optionPressed: optionPressed)
     }
 
     func updateLayout(
@@ -134,7 +186,9 @@ final class OverviewWindow: NSPanel {
         searchQuery: String,
         selectedWindowHandle: WindowHandle?,
         palette: OverviewRenderPalette? = nil,
-        animationsEnabled: Bool = true
+        animationsEnabled: Bool = true,
+        selection: OverviewSelection? = nil,
+        update: OverviewLayoutUpdate = .preserve
     ) {
         overlayView.updateLayout(
             layout,
@@ -142,12 +196,14 @@ final class OverviewWindow: NSPanel {
             searchQuery: searchQuery,
             selectedWindowHandle: selectedWindowHandle,
             palette: palette,
-            animationsEnabled: animationsEnabled
+            animationsEnabled: animationsEnabled,
+            selection: selection,
+            update: update
         )
     }
 
-    func updatePreview(_ frame: OverviewPreviewFrame?, for handle: WindowHandle) {
-        overlayView.updatePreview(frame, for: handle)
+    func updatePreview(_ frame: OverviewPreviewFrame?, for handle: WindowHandle, animated: Bool = true) {
+        overlayView.updatePreview(frame, for: handle, animated: animated)
     }
 
     func installAnimation(_ transition: OverviewNativeTransition, completion: OverviewAnimationCompletion) -> Bool {
@@ -156,6 +212,10 @@ final class OverviewWindow: NSPanel {
 
     func cancelAnimation() {
         overlayView.cancelAnimation()
+    }
+
+    func presentProgress(_ progress: Double) {
+        overlayView.presentProgress(progress)
     }
 
     func updatePalette(_ palette: OverviewRenderPalette) {

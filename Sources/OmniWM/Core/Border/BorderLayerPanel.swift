@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import OmniWMLayerCorners
@@ -9,6 +9,22 @@ import QuartzCore
 class BorderLayerPanel: NSPanel {
     let borderLayer = CALayer()
     private let containerLayer = CALayer()
+    private let effects = BorderEffectLayers()
+    var glowColorLayer: CAGradientLayer {
+        effects.glowColorLayer
+    }
+
+    var glowMaskLayer: CALayer {
+        effects.glowMaskLayer
+    }
+
+    var gradientStrokeLayer: CAGradientLayer {
+        effects.gradientStrokeLayer
+    }
+
+    var gradientRingMaskLayer: CAShapeLayer {
+        effects.gradientRingMaskLayer
+    }
 
     init?(frame: CGRect) {
         guard omniwm_layer_border_available() else { return nil }
@@ -38,6 +54,8 @@ class BorderLayerPanel: NSPanel {
             "rimWidth": NSNull(), "rimColor": NSNull(), "rimOpacity": NSNull(), "cornerRadii": NSNull(),
             "bounds": NSNull(), "position": NSNull(), "contentsScale": NSNull()
         ]
+        containerLayer.actions = ["hidden": NSNull()]
+        containerLayer.addSublayer(effects.root)
         containerLayer.addSublayer(borderLayer)
         view.layer = containerLayer
         contentView = view
@@ -58,7 +76,9 @@ class BorderLayerPanel: NSPanel {
     func applyFrame(targetFrame: CGRect, surfaceFrame: CGRect) {
         let panelFrame = surfaceFrame.integral
         let layerFrame = targetFrame.offsetBy(dx: -panelFrame.minX, dy: -panelFrame.minY)
-        guard frame != panelFrame || borderLayer.frame != layerFrame else { return }
+        let effectsFrame = surfaceFrame.offsetBy(dx: -panelFrame.minX, dy: -panelFrame.minY)
+        guard frame != panelFrame || borderLayer.frame != layerFrame
+            || effects.root.frame != effectsFrame else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if frame != panelFrame {
@@ -66,6 +86,9 @@ class BorderLayerPanel: NSPanel {
         }
         if borderLayer.frame != layerFrame {
             borderLayer.frame = layerFrame
+        }
+        if effects.root.frame != effectsFrame {
+            effects.root.frame = effectsFrame
         }
         CATransaction.commit()
     }
@@ -96,5 +119,31 @@ class BorderLayerPanel: NSPanel {
             borderLayer.cornerRadii = nativeRadii
         }
         CATransaction.commit()
+    }
+}
+
+extension BorderLayerPanel {
+    func updateEffects(
+        geometry: BorderConfig.ResolvedGeometry,
+        cornerRadii: WindowCornerRadii,
+        config: BorderConfig,
+        baseColor: CGColor,
+        scale: CGFloat
+    ) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        effects.updateEffects(
+            geometry: geometry,
+            cornerRadii: cornerRadii,
+            config: config,
+            baseColor: baseColor,
+            scale: scale
+        )
+        borderLayer.rimOpacity = config.gradient?.enabled == true ? 0 : 1
+        CATransaction.commit()
+    }
+
+    static func cgColor(_ color: SettingsColor) -> CGColor {
+        BorderEffectLayers.cgColor(color)
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -21,6 +21,7 @@ final class AXFullRescanResponsivenessTests: XCTestCase {
                 let start = WindowAdmissionTrace.shared.recordsSnapshot().count
                 let result = try await AXManager.enumerateFullRescanApp(
                     app,
+                    pid: app.processIdentifier,
                     route: route,
                     inspectionContext: .unidentified,
                     includedWindowIds: [],
@@ -64,6 +65,7 @@ final class AXFullRescanResponsivenessTests: XCTestCase {
                 do {
                     _ = try await AXManager.enumerateFullRescanApp(
                         app,
+                        pid: app.processIdentifier,
                         route: .oneShot,
                         inspectionContext: .unidentified,
                         includedWindowIds: [],
@@ -92,6 +94,7 @@ final class AXFullRescanResponsivenessTests: XCTestCase {
         for route in [FullRescanEnumerationRoute.persistent, .oneShot] {
             let result = try await AXManager.enumerateFullRescanApp(
                 app,
+                pid: app.processIdentifier,
                 route: route,
                 inspectionContext: .unidentified,
                 includedWindowIds: nil,
@@ -100,6 +103,7 @@ final class AXFullRescanResponsivenessTests: XCTestCase {
             let snapshot = try await manager.finalizeFullRescanSnapshot(
                 .init(
                     appTargets: [.init(
+                        pid: pid,
                         app: app,
                         route: route,
                         inspectionContext: .unidentified,

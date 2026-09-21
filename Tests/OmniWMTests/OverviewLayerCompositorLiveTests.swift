@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreVideo
+import ImageIO
 @testable import OmniWM
 import QuartzCore
 import ScreenCaptureKit
@@ -10,6 +11,81 @@ import XCTest
 
 @MainActor
 final class OverviewLayerCompositorLiveTests: XCTestCase {
+    func testCompositorKeepsExpandedWallpaperBehindRibbonCards() async throws {
+        guard ProcessInfo.processInfo.environment["OMNIWM_RUN_OVERVIEW_PREVIEW_LIVE_TESTS"] == "1" else {
+            throw XCTSkip("Live preview checks require OMNIWM_RUN_OVERVIEW_PREVIEW_LIVE_TESTS=1")
+        }
+        guard CGPreflightScreenCaptureAccess() else { throw XCTSkip("Screen Recording permission is required") }
+        _ = NSApplication.shared
+        let screen = try XCTUnwrap(NSScreen.main)
+        let panel = NSPanel(
+            contentRect: CGRect(x: screen.frame.midX - 400, y: screen.frame.midY - 180, width: 800, height: 360),
+            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false
+        )
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        let view = OverviewView(frame: CGRect(x: 0, y: 0, width: 800, height: 360))
+        panel.contentView = view
+        defer { panel.close() }
+        let context = try XCTUnwrap(CGContext(
+            data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let wallpaper = try XCTUnwrap(context.makeImage())
+        view.layerRenderer.wallpaperForDisplay = { _, _ in wallpaper }
+        let workspaceId = UUID()
+        let cards = [50.0, 630.0].enumerated().map { index, x in
+            var item = OverviewWindowItem(
+                handle: WindowHandle(id: WindowToken(pid: getpid(), windowId: index + 1)),
+                windowId: index + 1, workspaceId: workspaceId, title: "Window \(index + 1)",
+                appName: "App", appIcon: nil, originalFrame: .zero,
+                overviewFrame: CGRect(x: x, y: 100, width: 100, height: 130), matchesSearch: true
+            )
+            item.isTiled = true
+            return item
+        }
+        var layout = OverviewLayout()
+        layout.replaceWorkspaceSections([OverviewWorkspaceSection(
+            workspaceId: workspaceId, name: "Workspace", windows: cards,
+            sectionFrame: CGRect(x: 0, y: 60, width: 800, height: 240), labelFrame: .zero, gridFrame: .zero,
+            isActive: true, displayId: screen.displayId,
+            visibleFrame: CGRect(x: 180, y: 60, width: 300, height: 220),
+            ribbonFrame: CGRect(x: 20, y: 60, width: 760, height: 220)
+        )])
+        view.updateLayout(layout, state: .open, searchQuery: "", selectedWindowHandle: nil)
+        view.updateLayer()
+        panel.orderBack(nil)
+        panel.displayIfNeeded()
+        CATransaction.flush()
+        let content = try await SCShareableContent.currentProcess
+        let window = try XCTUnwrap(content.windows.first { Int($0.windowID) == panel.windowNumber })
+        let config = SCStreamConfiguration()
+        config.width = 800
+        config.height = 360
+        config.showsCursor = false
+        config.ignoreShadowsSingleWindow = true
+        config.shouldBeOpaque = false
+        let image = try await SCScreenshotManager.captureImage(
+            contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config
+        )
+        let bitmap = try Bitmap(image: image)
+        XCTAssertEqual(bitmap.color(at: CGPoint(x: 70, y: 80)), .blue)
+        XCTAssertEqual(bitmap.color(at: CGPoint(x: 710, y: 80)), .blue)
+        XCTAssertFalse(panel.isKeyWindow)
+        if let path = ProcessInfo.processInfo.environment["OMNIWM_OVERVIEW_TEST_CAPTURE_PATH"] {
+            let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
+                URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil
+            ))
+            CGImageDestinationAddImage(destination, image, nil)
+            XCTAssertTrue(CGImageDestinationFinalize(destination))
+        }
+    }
+
     func testCompositorPreservesPreviewCropOrientationAndTransparentBackdrop() async throws {
         guard ProcessInfo.processInfo.environment["OMNIWM_RUN_OVERVIEW_PREVIEW_LIVE_TESTS"] == "1" else {
             throw XCTSkip("Live preview checks require OMNIWM_RUN_OVERVIEW_PREVIEW_LIVE_TESTS=1")
@@ -42,8 +118,13 @@ final class OverviewLayerCompositorLiveTests: XCTestCase {
             hoveredBorderColor: SettingsColor(red: 1, green: 1, blue: 1, alpha: 1),
             selectedBorderColor: SettingsColor(red: 1, green: 1, blue: 1, alpha: 1)
         )
-        view.updateLayout(layout, state: .open, searchQuery: "", selectedWindowHandle: nil, palette: palette)
+        view.updateLayout(
+            layout, state: .open, searchQuery: "", selectedWindowHandle: nil,
+            palette: palette, animationsEnabled: false
+        )
         view.updatePreview(try makeQuadrantPreview(), for: handle)
+        let card = try XCTUnwrap(view.layerRenderer.windowLayers[handle])
+        XCTAssertNil(card.thumbnail.animation(forKey: "overview.previewReveal"))
         view.updateLayer()
         panel.orderBack(nil)
         panel.displayIfNeeded()

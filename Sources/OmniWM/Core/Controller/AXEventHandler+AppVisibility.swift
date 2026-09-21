@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 
@@ -73,6 +73,16 @@ extension AXEventHandler {
             controller: controller
         )
         controller.surfaceReconciler.noteWorldChanged()
+    }
+
+    func handleNativeAppUnhide(pid: pid_t) {
+        guard let controller else { return }
+        let shouldFollowActivation = controller.workspaceManager.isAppHidden(pid: pid)
+            && controller.intentLedger.openAppRevealFocusIntent(pid: pid) == nil
+        handleAppUnhidden(pid: pid, source: .service)
+        if shouldFollowActivation {
+            handleAppActivation(pid: pid, source: .workspaceDidUnhideApplication)
+        }
     }
 
     func handleAppUnhidden(pid: pid_t, source: WMEventSource = .ax) {

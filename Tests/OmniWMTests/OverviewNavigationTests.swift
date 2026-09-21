@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 @testable import OmniWM
@@ -78,7 +78,7 @@ final class OverviewNavigationTests: XCTestCase {
                 from: current,
                 direction: .left
             ),
-            greatestOverlap
+            current
         )
     }
 
@@ -160,14 +160,14 @@ final class OverviewNavigationTests: XCTestCase {
         )
         XCTAssertEqual(
             OverviewNavigation.findNextWindow(in: layout, from: left, direction: .left),
-            right,
+            left,
             message,
             file: file,
             line: line
         )
         XCTAssertEqual(
             OverviewNavigation.findNextWindow(in: layout, from: right, direction: .right),
-            left,
+            right,
             message,
             file: file,
             line: line
@@ -186,6 +186,7 @@ final class OverviewNavigationTests: XCTestCase {
         for (columnIndex, heights) in columnHeights.enumerated() {
             var handles: [WindowHandle] = []
             var tiles: [NiriOverviewTileSnapshot] = []
+            var top = screenFrame.maxY
             for (tileIndex, height) in heights.enumerated() {
                 let ordinal = columnIndex * 100 + tileIndex + 1
                 let token = WindowToken(pid: pid_t(80_000 + ordinal), windowId: 80_000 + ordinal)
@@ -201,7 +202,13 @@ final class OverviewNavigationTests: XCTestCase {
                     frame: CGRect(x: CGFloat(columnIndex) * 500, y: 0, width: 400, height: height)
                 )
                 handles.append(handle)
-                tiles.append(NiriOverviewTileSnapshot(token: token, preferredHeight: height))
+                top -= height
+                tiles.append(NiriOverviewTileSnapshot(
+                    token: token,
+                    preferredHeight: height,
+                    stripFrame: CGRect(x: CGFloat(columnIndex) * 500, y: top, width: 400, height: height)
+                ))
+                top -= 16
             }
             handlesByColumn.append(handles)
             snapshotColumns.append(

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 @testable import OmniWMCtl
@@ -65,6 +65,9 @@ final class CaptureCLIContractTests: XCTestCase {
                 XCTAssertTrue(script.contains("__fish_seen_subcommand_from capture"))
                 XCTAssertTrue(script.contains("__fish_seen_subcommand_from performance trace' -a 'trace'"))
                 XCTAssertTrue(script.contains("__fish_seen_subcommand_from performance trace' -a 'performance'"))
+            case .nu:
+                XCTAssertTrue(script.contains("captureActionNames: [\"start\" \"status\" \"stop\"]"))
+                XCTAssertTrue(script.contains("captureProfiles: [\"performance\" \"trace\"]"))
             }
         }
     }

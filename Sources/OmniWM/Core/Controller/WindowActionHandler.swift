@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -24,8 +24,14 @@ final class WindowActionHandler {
         }
         guard let controller else { fatal("WindowActionHandler requires controller") }
         let oc = OverviewController(wmController: controller, motionPolicy: controller.motionPolicy)
+        oc.onPrepareActivation = { [weak self] handle, workspaceId in
+            self?.prepareOverviewSelection(handle: handle, workspaceId: workspaceId)
+        }
         oc.onActivateWindow = { [weak self] handle, workspaceId in
             self?.activateWindowFromOverview(handle: handle, workspaceId: workspaceId)
+        }
+        oc.onActivateWorkspace = { [weak self] workspaceId in
+            self?.controller?.workspaceNavigationHandler.activateOverviewWorkspace(workspaceId) ?? false
         }
         oc.onCloseWindow = { [weak self] handle in
             self?.closeWindow(handle: handle) ?? false
@@ -83,6 +89,38 @@ final class WindowActionHandler {
         overviewController.toggle()
     }
 
+    func openOverview() {
+        overviewController.open()
+    }
+
+    func dismissOverview() {
+        overviewControllerStorage?.input.dismissToSelection(animated: true)
+    }
+
+    var overviewState: OverviewState {
+        overviewControllerStorage?.state ?? .closed
+    }
+
+    var isOverviewGestureActive: Bool {
+        overviewControllerStorage?.isInteractiveTransitionActive == true
+    }
+
+    var overviewTransitionProgress: Double {
+        overviewControllerStorage?.transitionProgress ?? 0
+    }
+
+    func beginOverviewGesture() -> Bool {
+        overviewController.beginInteractiveTransition()
+    }
+
+    func updateOverviewGesture(cumulativeUnits: Double, timestamp: TimeInterval) {
+        overviewControllerStorage?.updateInteractiveTransition(cumulativeUnits: cumulativeUnits, timestamp: timestamp)
+    }
+
+    func endOverviewGesture(timestamp: TimeInterval?) {
+        overviewControllerStorage?.endInteractiveTransition(timestamp: timestamp)
+    }
+
     func handleOverviewHotkey(_ invocation: HotkeyInvocation) -> OverviewHotkeyDisposition {
         overviewControllerStorage?.input.handleHotkeyInvocation(invocation) ?? .inactive
     }
@@ -111,13 +149,20 @@ final class WindowActionHandler {
     }
 
     func isOverviewOpen() -> Bool {
-        overviewControllerStorage?.isOpen == true
+        overviewState.isOpen
     }
 
     private func activateWindowFromOverview(handle: WindowHandle, workspaceId: WorkspaceDescriptor.ID) {
         guard let controller else { return }
-        guard controller.workspaceManager.entry(for: handle) != nil else { return }
-        navigateToWindowInternal(token: handle.id, workspaceId: workspaceId)
+        guard let entry = controller.workspaceManager.entry(for: handle) else { return }
+        if entry.layoutReason == .nativeFullscreen {
+            guard let record = controller.workspaceManager.nativeFullscreenRecord(for: entry.token) else { return }
+            controller.activateNativeFullscreenPlaceholder(record.originalToken)
+            return
+        }
+        navigateToWindowInternal(
+            token: handle.id, workspaceId: workspaceId, affectedWorkspaces: [workspaceId]
+        )
     }
 
     func closeWindow(handle: WindowHandle) -> Bool {

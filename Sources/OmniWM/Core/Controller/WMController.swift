@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -83,7 +83,8 @@ final class WMController {
         get { workspaceManager.stackEngine }
         set { workspaceManager.stackEngine = newValue }
     }
-    let tabRailManager = TabRailManager()
+    @ObservationIgnored
+    private(set) lazy var tabRailManager = TabRailManager(motionPolicy: motionPolicy, appInfoCache: appInfoCache)
     @ObservationIgnored
     lazy var nativeFullscreenPlaceholderManager: NativeFullscreenPlaceholderManager = {
         let manager = NativeFullscreenPlaceholderManager()
@@ -216,6 +217,10 @@ final class WMController {
     private let clipboardHistoryDirectory: URL
     let windowFocusOperations: WindowFocusOperations
     weak var statusBarController: StatusBarController?
+    @ObservationIgnored
+    var effectiveAppearanceObserver: NSKeyValueObservation?
+    @ObservationIgnored
+    var borderUsesDarkAppearance = false
 
     init(
         settings: SettingsStore,
@@ -252,6 +257,7 @@ final class WMController {
         configureSurfaceCallbacks()
         configureWorldCallbacks()
         configureFocusAndMenuCallbacks()
+        installEffectiveAppearanceObserver()
     }
 }
 
@@ -319,10 +325,6 @@ extension WMController {
         } else {
             surfaceReconciler.noteBorderChanged()
         }
-    }
-
-    var isHiddenBarHidingAvailable: Bool {
-        hiddenBarController.isHidingAvailable
     }
 
     @discardableResult

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -11,14 +11,27 @@ extension MouseEventHandler {
     }
 
     var trackpadGestureConfig: TrackpadGestureIntent.Config? {
-        guard let settings = controller?.settings else { return nil }
+        guard let controller else { return nil }
+        let settings = controller.settings
+        let overviewState = controller.windowActionHandler.overviewState
+        let isOverviewOpen = overviewState.isOpen
         return TrackpadGestureIntent.Config(
-            columnScrollEnabled: settings.gestures.scrollEnabled,
+            columnScrollEnabled: settings.gestures.scrollEnabled && !isOverviewOpen,
             columnScrollFingerCount: settings.gestures.fingerCount.rawValue,
-            workspaceSwipeEnabled: settings.gestures.workspaceSwipeEnabled,
+            workspaceSwipeEnabled: settings.gestures.workspaceSwipeEnabled && !isOverviewOpen,
             workspaceSwipeFingerCount: settings.gestures.workspaceSwipeFingerCount.rawValue,
-            workspaceSwipeAxis: settings.gestures.effectiveWorkspaceSwipeAxis
+            workspaceSwipeAxis: settings.gestures.workspaceSwipeAxis,
+            overviewAction: settings.gestures.overviewGestureEnabled ? overviewState.gestureAction : nil,
+            overviewFingerCount: settings.gestures.overviewGestureFingerCount.rawValue,
+            windowMoveEnabled: settings.gestures.windowMoveEnabled && !isOverviewOpen,
+            windowMoveFingerCount: settings.gestures.windowMoveFingerCount.rawValue,
+            windowResizeEnabled: settings.gestures.windowResizeEnabled && !isOverviewOpen,
+            windowResizeFingerCount: settings.gestures.windowResizeFingerCount.rawValue
         )
+    }
+
+    var overviewGestureInteractive: Bool {
+        controller?.motionPolicy.animationsEnabled == true
     }
 
     func dispatchMouseMoved(
@@ -131,6 +144,31 @@ extension MouseEventHandler {
         )
     }
 
+    func receiveTapOverviewMouseButton(type: CGEventType, button: Int64) -> Bool {
+        if state.capturedOverviewButton == button {
+            if type == .otherMouseUp {
+                state.capturedOverviewButton = nil
+            }
+            return true
+        }
+        guard type == .otherMouseDown,
+              let controller,
+              OverviewInputSettingsValidation.mouseButtons.contains(button),
+              controller.settings.overview.mouseButton == button,
+              controller.settings.systemHyperTrigger.mouseButtonNumber != button
+        else { return false }
+
+        flushQueuedTapEventsBeforeImmediateDispatch()
+        guard controller.isEnabled, !isInputSuppressed,
+              state.capturedOverviewButton == nil, state.capturedInteractionButton == nil,
+              !state.isMoving, !state.isResizing, !isTrackpadSwipeSessionActive,
+              state.nativeTitleBarDrag == nil, !state.awaitsNativeTitleBarDragTarget
+        else { return false }
+        state.capturedOverviewButton = button
+        controller.windowActionHandler.toggleOverview()
+        return true
+    }
+
     @discardableResult
     func receiveTapMouseDown(
         at location: CGPoint,
@@ -200,6 +238,15 @@ extension MouseEventHandler {
             handleInputSuppressionBegan()
             return false
         }
+        if payload.phase == 0, payload.momentumPhase == 0, payload.isContinuous,
+           let senderId = payload.senderId, senderId != 0
+        {
+            drainTrackpadFrames(for: senderId, at: payload.location)
+            if consumesTrackpadSession(senderId: senderId) {
+                recordDroppedTrackpadScroll()
+                return true
+            }
+        }
         let suppress = shouldSuppressScroll(
             at: payload.location,
             momentumPhase: payload.momentumPhase,
@@ -227,7 +274,7 @@ extension MouseEventHandler {
         if isTrackpad { return suppressTrackpadScroll(momentumPhase: momentumPhase, phase: phase) }
 
         guard let controller, controller.isEnabled,
-              controller.settings.gestures.scrollEnabled || controller.settings.gestures.workspaceSwipeEnabled
+              controller.settings.gestures.trackpadGesturesEnabled
         else {
             return false
         }

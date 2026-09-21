@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -56,7 +56,7 @@ extension AXEventHandler {
         else {
             return
         }
-        guard await controller.axManager.ensureContext(for: app),
+        guard await controller.axManager.ensureContext(for: app, pid: pid),
               !Task.isCancelled
         else { return }
         controller.axManager.bindManagedWindows(controller.workspaceManager.entries(forPid: pid))

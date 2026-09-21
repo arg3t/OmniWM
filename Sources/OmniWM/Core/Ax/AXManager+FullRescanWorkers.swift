@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -19,6 +19,7 @@ extension AXManager {
             operation: { target in
                 try await Self.enumerateFullRescanApp(
                     target.app,
+                    pid: target.pid,
                     route: target.route,
                     inspectionContext: target.inspectionContext,
                     includedWindowIds: target.includedWindowIds
@@ -29,17 +30,17 @@ extension AXManager {
 
     nonisolated static func enumerateFullRescanApp(
         _ app: NSRunningApplication,
+        pid: pid_t,
         route: FullRescanEnumerationRoute,
         inspectionContext: AXWindowInspectionContext,
         includedWindowIds: Set<Int>?,
         isAppUnresponsive: @Sendable (pid_t) -> Bool? = SkyLight.isAppUnresponsive
     ) async throws -> FullRescanAppEnumerationResult {
         try Task.checkCancellation()
-        let pid = app.processIdentifier
         let unresponsive = isAppUnresponsive(pid)
         try Task.checkCancellation()
         if unresponsive == true {
-            recordFullRescanEnumerationFailure(app, reason: "app_unresponsive")
+            recordFullRescanEnumerationFailure(app, pid: pid, reason: "app_unresponsive")
             return .failed(pid: pid, route: route, callbackGeneration: nil)
         }
         var callbackGeneration: UInt64?
@@ -47,8 +48,8 @@ extension AXManager {
             let windows: [AXEnumeratedWindow]
             switch route {
             case .persistent:
-                guard let context = try await AppAXContextRegistry.getOrCreate(app) else {
-                    recordFullRescanEnumerationFailure(app, reason: "context_unavailable")
+                guard let context = try await AppAXContextRegistry.getOrCreate(app, pid: pid) else {
+                    recordFullRescanEnumerationFailure(app, pid: pid, reason: "context_unavailable")
                     return .failed(pid: pid, route: route, callbackGeneration: nil)
                 }
                 callbackGeneration = context.callbackGeneration
@@ -60,6 +61,7 @@ extension AXManager {
             case .oneShot:
                 windows = try enumerateOneShotRescanApp(
                     app,
+                    pid: pid,
                     inspectionContext: inspectionContext,
                     includedWindowIds: includedWindowIds
                 )
@@ -76,6 +78,7 @@ extension AXManager {
         } catch {
             recordFullRescanEnumerationFailure(
                 app,
+                pid: pid,
                 reason: String(describing: error),
                 callbackGeneration: callbackGeneration
             )
@@ -85,13 +88,14 @@ extension AXManager {
 
     nonisolated static func recordFullRescanEnumerationFailure(
         _ app: NSRunningApplication,
+        pid: pid_t,
         reason: String,
         callbackGeneration: UInt64? = nil
     ) {
         WindowAdmissionTrace.record(
             .init(
                 action: .enumerationFailed,
-                pid: app.processIdentifier,
+                pid: pid,
                 bundleId: app.bundleIdentifier,
                 reason: reason,
                 callbackGeneration: callbackGeneration
@@ -101,10 +105,10 @@ extension AXManager {
 
     private nonisolated static func enumerateOneShotRescanApp(
         _ app: NSRunningApplication,
+        pid: pid_t,
         inspectionContext: AXWindowInspectionContext,
         includedWindowIds: Set<Int>?
     ) throws -> [AXEnumeratedWindow] {
-        let pid = app.processIdentifier
         WindowAdmissionTrace.record(
             .init(
                 action: .enumerationStarted,

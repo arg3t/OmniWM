@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -17,6 +17,17 @@ final class MonitorConfigurationSettings {
 
     var arrangements = MonitorConfigurationSettings.defaults.arrangements {
         didSet { onChange?() }
+    }
+
+    var ranking: [OutputId] = [] {
+        didSet {
+            let normalized = MonitorRanking.normalized(ranking)
+            if normalized != ranking {
+                ranking = normalized
+                return
+            }
+            onChange?()
+        }
     }
 
     var orientationOverrides: [MonitorOrientationSettings] = [] {

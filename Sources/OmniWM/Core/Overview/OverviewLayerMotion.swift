@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import QuartzCore
+
+enum OverviewLayoutUpdate {
+    case preserve
+    case immediate
+    case structural
+    case viewport
+}
 
 @MainActor
 struct OverviewLayerMotion {
@@ -12,25 +19,14 @@ struct OverviewLayerMotion {
     private let modelPosition: CGPoint
     private let modelBounds: CGRect
     private let modelOpacity: Float
+    private let response: Double?
 
-    init(_ layer: CALayer) {
+    init(_ layer: CALayer, response: Double? = nil) {
         self.layer = layer
-        let presentation = layer.presentation()
-        if let animation = layer.animation(forKey: "overview.position") as? CABasicAnimation {
-            position = presentation?.position ?? (animation.fromValue as? NSValue)?.pointValue ?? layer.position
-        } else {
-            position = layer.position
-        }
-        if let animation = layer.animation(forKey: "overview.bounds") as? CABasicAnimation {
-            bounds = presentation?.bounds ?? (animation.fromValue as? NSValue)?.rectValue ?? layer.bounds
-        } else {
-            bounds = layer.bounds
-        }
-        if let animation = layer.animation(forKey: "overview.opacity") as? CABasicAnimation {
-            opacity = presentation?.opacity ?? (animation.fromValue as? NSNumber)?.floatValue ?? layer.opacity
-        } else {
-            opacity = layer.opacity
-        }
+        self.response = response
+        position = Self.displayedPosition(of: layer)
+        bounds = Self.displayedBounds(of: layer)
+        opacity = Self.displayedOpacity(of: layer)
         modelPosition = layer.position
         modelBounds = layer.bounds
         modelOpacity = layer.opacity
@@ -43,7 +39,7 @@ struct OverviewLayerMotion {
         }
         guard replacing || modelPosition != layer.position || modelBounds != layer.bounds || modelOpacity != layer
             .opacity else { return }
-        let animation = transition.makeAnimation(keyPath: "")
+        let animation = transition.makeAnimation(keyPath: "", response: response)
         if replacing {
             animation.beginTime = layer.convertTime(transition.startTime, from: nil)
         } else {
@@ -86,6 +82,38 @@ struct OverviewLayerMotion {
 
     static func remove(from layer: CALayer) {
         for key in ["position", "bounds", "opacity"] { layer.removeAnimation(forKey: "overview.\(key)") }
+    }
+
+    static func displayedFrame(of layer: CALayer) -> CGRect {
+        let position = displayedPosition(of: layer)
+        let bounds = displayedBounds(of: layer)
+        return CGRect(
+            x: position.x - bounds.width * layer.anchorPoint.x,
+            y: position.y - bounds.height * layer.anchorPoint.y,
+            width: bounds.width,
+            height: bounds.height
+        )
+    }
+
+    static func displayedBounds(of layer: CALayer) -> CGRect {
+        guard let animation = layer.animation(forKey: "overview.bounds") as? CABasicAnimation else {
+            return layer.bounds
+        }
+        return layer.presentation()?.bounds ?? (animation.fromValue as? NSValue)?.rectValue ?? layer.bounds
+    }
+
+    static func displayedOpacity(of layer: CALayer) -> Float {
+        guard let animation = layer.animation(forKey: "overview.opacity") as? CABasicAnimation else {
+            return layer.opacity
+        }
+        return layer.presentation()?.opacity ?? (animation.fromValue as? NSNumber)?.floatValue ?? layer.opacity
+    }
+
+    private static func displayedPosition(of layer: CALayer) -> CGPoint {
+        guard let animation = layer.animation(forKey: "overview.position") as? CABasicAnimation else {
+            return layer.position
+        }
+        return layer.presentation()?.position ?? (animation.fromValue as? NSValue)?.pointValue ?? layer.position
     }
 
     private func add(

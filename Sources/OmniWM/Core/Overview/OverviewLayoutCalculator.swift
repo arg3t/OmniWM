@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -8,6 +8,7 @@ struct OverviewWorkspaceLayoutItem {
     let id: WorkspaceDescriptor.ID
     let name: String
     let isActive: Bool
+    var displayId: CGDirectDisplayID?
 }
 
 struct OverviewWindowLayoutData {
@@ -17,6 +18,8 @@ struct OverviewWindowLayoutData {
     let appName: String
     let appIcon: NSImage?
     let frame: CGRect
+    var isNativeFullscreen = false
+    var floatingPreviewFrame: CGRect?
 }
 
 enum OverviewLayoutMetrics {
@@ -33,6 +36,9 @@ enum OverviewLayoutMetrics {
     static let closeButtonPadding: CGFloat = 6
     static let contentTopPadding: CGFloat = 20
     static let contentBottomPadding: CGFloat = 40
+    static let overflowPillHeight: CGFloat = 26
+    static let overflowPillWidth: CGFloat = 52
+    static let dragAutoScrollBand: CGFloat = 56
 }
 
 @MainActor
@@ -45,7 +51,7 @@ struct OverviewLayoutCalculator {
         self.scale = scale
     }
 
-    static func clampedScale(_ scale: CGFloat) -> CGFloat {
+    nonisolated static func clampedScale(_ scale: CGFloat) -> CGFloat {
         max(0.5, min(1.5, scale))
     }
 
@@ -61,82 +67,95 @@ struct OverviewLayoutCalculator {
         workspaces: [OverviewWorkspaceLayoutItem],
         windows: [WindowHandle: OverviewWindowLayoutData],
         niriSnapshotsByWorkspace: [WorkspaceDescriptor.ID: NiriOverviewWorkspaceSnapshot] = [:],
-        searchQuery: String
+        dwindleGroupsByWorkspace: [WorkspaceDescriptor.ID: [OverviewDwindleGroup]] = [:],
+        searchQuery: String,
+        stripPans: [WorkspaceDescriptor.ID: CGFloat] = [:],
+        monitorId: Monitor.ID? = nil
     ) -> OverviewLayout {
         let context = geometry
         var layout = OverviewLayout()
         layout.scale = scale
         layout.searchBarFrame = context.searchBarFrame
+        layout.viewportFrame = context.screenFrame
 
-        let windowIndex = Self.indexWindows(windows, workspaceCount: workspaces.count)
+        let windowsByWorkspace = Self.indexWindows(windows, workspaceCount: workspaces.count)
 
         var sections: [OverviewWorkspaceSection] = []
         sections.reserveCapacity(workspaces.count)
-
-        var niriColumnsByWorkspace: [WorkspaceDescriptor.ID: [OverviewNiriColumn]] = [:]
-        var niriColumnDropZonesByWorkspace: [WorkspaceDescriptor.ID: [OverviewColumnDropZone]] = [:]
         var currentY = context.initialContentY
 
         for workspace in workspaces {
-            guard let workspaceWindows = windowIndex.byWorkspace[workspace.id], !workspaceWindows.isEmpty else {
+            guard let workspaceWindows = windowsByWorkspace[workspace.id], !workspaceWindows.isEmpty else {
+                sections.append(context.buildEmptyWorkspaceSection(workspace: workspace, currentY: &currentY))
                 continue
             }
-
             if let snapshot = niriSnapshotsByWorkspace[workspace.id],
                let projection = context.buildNiriWorkspaceProjection(
                    workspace: workspace,
                    snapshot: snapshot,
-                   windowsByToken: windowIndex.byToken,
+                   windows: workspaceWindows,
                    searchQuery: searchQuery,
                    currentY: &currentY
                )
             {
                 sections.append(projection.section)
-                if !projection.columns.isEmpty {
-                    niriColumnsByWorkspace[workspace.id] = projection.columns
-                }
-                if !projection.columnDropZones.isEmpty {
-                    niriColumnDropZonesByWorkspace[workspace.id] = projection.columnDropZones
-                }
-                continue
-            }
-
-            if let section = context.buildGenericWorkspaceSection(
+                layout.niriColumnsByWorkspace[workspace.id] = projection.columns
+                layout.niriColumnDropZonesByWorkspace[workspace.id] = projection.columnDropZones
+            } else if let section = context.buildGenericWorkspaceSection(
                 workspace: workspace,
                 windows: workspaceWindows,
+                dwindleGroups: dwindleGroupsByWorkspace[workspace.id] ?? [],
                 searchQuery: searchQuery,
                 currentY: &currentY
             ) {
                 sections.append(section)
+                layout.dwindleGroupsByWorkspace[workspace.id] = dwindleGroupsByWorkspace[workspace.id]
             }
         }
 
+        if let monitorId {
+            let frame = context.ribbonFrame(for: context.visibleFrame(top: currentY, scale: context.stripScale))
+            layout.newWorkspaceTarget = OverviewNewWorkspaceTarget(monitorId: monitorId, frame: frame)
+            currentY = frame.minY - context.scaledWorkspaceSectionPadding
+        }
         layout.replaceWorkspaceSections(sections)
-        layout.niriColumnsByWorkspace = niriColumnsByWorkspace
-        layout.niriColumnDropZonesByWorkspace = niriColumnDropZonesByWorkspace
         layout.totalContentHeight = context.totalContentHeight(currentY: currentY)
+        for (workspaceId, pan) in stripPans {
+            layout.restoreStripPan(workspaceId, to: pan)
+        }
+        layout.refreshOverflow()
         return layout
+    }
+
+    static func dragAutoScrollVelocity(
+        pointerY: CGFloat,
+        viewportFrame: CGRect,
+        scale _: CGFloat
+    ) -> CGFloat {
+        let band = OverviewLayoutMetrics.dragAutoScrollBand
+        guard band > 0, viewportFrame.height > band * 2 else { return 0 }
+        let maximumSpeed: CGFloat = 1_400
+        if pointerY > viewportFrame.maxY - band {
+            let depth = min(1, (pointerY - (viewportFrame.maxY - band)) / band)
+            return depth * maximumSpeed
+        }
+        if pointerY < viewportFrame.minY + band {
+            let depth = min(1, ((viewportFrame.minY + band) - pointerY) / band)
+            return -depth * maximumSpeed
+        }
+        return 0
     }
 
     private static func indexWindows(
         _ windows: [WindowHandle: OverviewWindowLayoutData],
         workspaceCount: Int
-    ) -> (
-        byWorkspace: [WorkspaceDescriptor.ID: [(WindowHandle, OverviewWindowLayoutData)]],
-        byToken: [WindowToken: (WindowHandle, OverviewWindowLayoutData)]
-    ) {
+    ) -> [WorkspaceDescriptor.ID: [(WindowHandle, OverviewWindowLayoutData)]] {
         var windowsByWorkspace: [WorkspaceDescriptor.ID: [(WindowHandle, OverviewWindowLayoutData)]] = [:]
         windowsByWorkspace.reserveCapacity(workspaceCount)
-
-        var windowsByToken: [WindowToken: (WindowHandle, OverviewWindowLayoutData)] = [:]
-        windowsByToken.reserveCapacity(windows.count)
-
         for (handle, windowData) in windows {
             windowsByWorkspace[windowData.workspaceId, default: []].append((handle, windowData))
-            windowsByToken[windowData.token] = (handle, windowData)
         }
-
-        return (windowsByWorkspace, windowsByToken)
+        return windowsByWorkspace
     }
 
     static func scrollOffsetBounds(layout: OverviewLayout, screenFrame: CGRect) -> ClosedRange<CGFloat> {

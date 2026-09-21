@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import ApplicationServices
 import CoreGraphics
@@ -9,6 +9,40 @@ import XCTest
 
 @MainActor
 final class NativeFullscreenSlotProjectionTests: XCTestCase {
+    func testCachedTitleChangeUpdatesExistingPanel() throws {
+        let fixture = try makeFixture()
+        let manager = fixture.controller.workspaceManager
+        XCTAssertTrue(manager.setManagedReplacementMetadata(
+            ManagedReplacementMetadata(workspaceId: fixture.workspaceId, mode: .tiling, title: "First document"),
+            for: fixture.token
+        ))
+        fixture.controller.surfaceReconciler.reconcileNow()
+        fixture.controller.surfaceReconciler.applyAcceptedNativeFullscreenSlots(
+            [fixture.token: NativeFullscreenSlotProjection(
+                currentToken: fixture.token,
+                frame: CGRect(x: 120, y: 80, width: 640, height: 480),
+                visible: true
+            )],
+            workspaceId: fixture.workspaceId,
+            displayId: fixture.monitor.displayId,
+            displayContext: displayContext(for: fixture.monitor)
+        )
+        let first = try XCTUnwrap(fixture.controller.surfaceReconciler.appliedScene.placeholders.first)
+        let identity = try XCTUnwrap(fixture.controller.nativeFullscreenPlaceholderManager
+            .panelIdentity(for: fixture.token))
+        XCTAssertEqual(first.windowTitle, "First document")
+        XCTAssertTrue(manager.updateManagedReplacementTitle("Second document", for: fixture.token))
+        fixture.controller.surfaceReconciler.reconcileNow()
+        let updated = try XCTUnwrap(fixture.controller.surfaceReconciler.appliedScene.placeholders.first)
+        XCTAssertEqual(updated.windowTitle, "Second document")
+        XCTAssertNotEqual(first, updated)
+        XCTAssertEqual(updated.frame, first.frame)
+        XCTAssertEqual(
+            fixture.controller.nativeFullscreenPlaceholderManager.panelIdentity(for: fixture.token),
+            identity
+        )
+    }
+
     func testDescriptorBeforeProjectionBecomesVisibleFromAcceptedSlot() throws {
         let fixture = try makeFixture()
         fixture.controller.surfaceReconciler.reconcileNow()

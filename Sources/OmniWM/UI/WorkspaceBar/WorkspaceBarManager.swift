@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import SwiftUI
@@ -57,6 +57,7 @@ enum WorkspaceBarNotchMode: String, CaseIterable, Codable, Identifiable {
     case moveBelowMenuBar
     case splitActiveLeft
     case splitActiveRight
+    case fillLeftOfNotch
 
     var id: String {
         rawValue
@@ -72,6 +73,7 @@ enum WorkspaceBarNotchMode: String, CaseIterable, Codable, Identifiable {
         case .moveBelowMenuBar: "Move Below Menu Bar"
         case .splitActiveLeft: "Split — Active Left"
         case .splitActiveRight: "Split — Active Right"
+        case .fillLeftOfNotch: "Fill Left of Notch"
         }
     }
 }

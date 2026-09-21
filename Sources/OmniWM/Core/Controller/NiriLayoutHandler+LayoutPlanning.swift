@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -330,6 +330,33 @@ extension NiriLayoutHandler {
             windows: snapshot.windows,
             windowTokens: snapshot.windows.map(\.token)
         )
+    }
+
+    func settledFrames(in workspaceId: WorkspaceDescriptor.ID) -> [WindowToken: CGRect]? {
+        guard let controller,
+              let engine = controller.niriEngine,
+              let monitor = controller.workspaceManager.monitor(for: workspaceId),
+              let snapshot = makeWorkspaceSnapshot(
+                  workspaceId: workspaceId,
+                  monitor: monitor,
+                  options: SnapshotOptions(
+                      viewportState: controller.workspaceManager.niriViewportState(for: workspaceId),
+                      useScrollAnimationPath: false,
+                      removalSeed: nil,
+                      isActiveWorkspace: controller.workspaceManager.activeWorkspaceOrFirst(on: monitor.id)?.id
+                          == workspaceId
+                  )
+              )
+        else {
+            return nil
+        }
+        return calculateOnDemandFrames(
+            snapshot: snapshot,
+            engine: engine,
+            monitor: monitor,
+            sampledAnimationTime: nil,
+            isSettled: true
+        ).frames
     }
 
     private func calculateOnDemandFrames(

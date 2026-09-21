@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -110,7 +110,7 @@ extension WorkspaceManager {
         windowQueries.cachedConstraints(for: token, maxAge: maxAge)
     }
 
-    func observedMinSize(for token: WindowToken) -> CGSize? {
-        windowQueries.observedMinSize(for: token)
+    func observedSizeEvidence(for token: WindowToken) -> ObservedSizeEvidence? {
+        windowQueries.observedSizeEvidence(for: token)
     }
 }

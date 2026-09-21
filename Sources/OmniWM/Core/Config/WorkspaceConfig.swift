@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 import OmniWMIPC
@@ -27,12 +27,14 @@ enum LayoutType: String, Codable, CaseIterable, Identifiable {
 enum MonitorAssignment: Equatable, Hashable {
     case main
     case secondary
+    case tertiary
     case specificDisplay(OutputId)
 
     var displayName: String {
         switch self {
         case .main: "Main"
         case .secondary: "Secondary"
+        case .tertiary: "Tertiary"
         case let .specificDisplay(output): output.name
         }
     }
@@ -41,6 +43,7 @@ enum MonitorAssignment: Equatable, Hashable {
         switch self {
         case .main: return .main
         case .secondary: return .secondary
+        case .tertiary: return .tertiary
         case let .specificDisplay(output): return .output(output)
         }
     }
@@ -52,7 +55,7 @@ extension MonitorAssignment: Codable {
     }
 
     private enum AssignmentType: String, Codable {
-        case main, secondary, specificDisplay
+        case main, secondary, tertiary, specificDisplay
     }
 
     init(from decoder: Decoder) throws {
@@ -61,6 +64,7 @@ extension MonitorAssignment: Codable {
         switch type {
         case .main: self = .main
         case .secondary: self = .secondary
+        case .tertiary: self = .tertiary
         case .specificDisplay:
             let output = try container.decode(OutputId.self, forKey: .output)
             self = .specificDisplay(output)
@@ -74,6 +78,8 @@ extension MonitorAssignment: Codable {
             try container.encode(AssignmentType.main, forKey: .type)
         case .secondary:
             try container.encode(AssignmentType.secondary, forKey: .type)
+        case .tertiary:
+            try container.encode(AssignmentType.tertiary, forKey: .type)
         case let .specificDisplay(output):
             try container.encode(AssignmentType.specificDisplay, forKey: .type)
             try container.encode(output, forKey: .output)

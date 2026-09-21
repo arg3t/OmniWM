@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -388,8 +388,8 @@ extension WorkspaceManager {
     }
 
     @discardableResult
-    func setObservedMinSize(_ size: CGSize, for token: WindowToken) -> Bool {
-        world.setObservedMinSize(size, for: token)
+    func setObservedSizeEvidence(_ evidence: ObservedSizeEvidence, for token: WindowToken) -> Bool {
+        world.setObservedSizeEvidence(evidence, for: token)
     }
 
     func applyWorkspaceMonitorRelocation(

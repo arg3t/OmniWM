@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -14,7 +14,7 @@ struct OverviewLayoutGeometry {
     let scaledWorkspaceLabelHeight: CGFloat
     let scaledWorkspaceSectionPadding: CGFloat
     let scaledWindowSpacing: CGFloat
-    let thumbnailWidth: CGFloat
+    let stripScale: CGFloat
     let initialContentY: CGFloat
     let contentTopPadding: CGFloat
     let contentBottomPadding: CGFloat
@@ -32,11 +32,7 @@ struct OverviewLayoutGeometry {
         )
 
         let scaledWindowPadding = OverviewLayoutMetrics.windowPadding * metricsScale
-        let availableWidth = screenFrame.width - (scaledWindowPadding * 2)
-        let thumbnailWidth = min(
-            OverviewLayoutMetrics.maxThumbnailWidth * metricsScale,
-            max(OverviewLayoutMetrics.minThumbnailWidth * metricsScale, availableWidth / 4)
-        )
+        let availableWidth = max(1, screenFrame.width - (scaledWindowPadding * 2))
 
         self.screenFrame = screenFrame
         self.metricsScale = metricsScale
@@ -46,10 +42,14 @@ struct OverviewLayoutGeometry {
         self.scaledWorkspaceLabelHeight = OverviewLayoutMetrics.workspaceLabelHeight * metricsScale
         self.scaledWorkspaceSectionPadding = OverviewLayoutMetrics.workspaceSectionPadding * metricsScale
         self.scaledWindowSpacing = OverviewLayoutMetrics.windowSpacing * metricsScale
-        self.thumbnailWidth = thumbnailWidth
+        stripScale = max(1, (searchBarY - screenFrame.minY - 56) * 0.5 * metricsScale) / max(screenFrame.height, 1)
         self.initialContentY = searchBarY - OverviewLayoutMetrics.contentTopPadding * metricsScale
         self.contentTopPadding = OverviewLayoutMetrics.contentTopPadding * metricsScale
         self.contentBottomPadding = OverviewLayoutMetrics.contentBottomPadding * metricsScale
+    }
+
+    var monitorLocalFrame: CGRect {
+        CGRect(origin: .zero, size: screenFrame.size)
     }
 
     func makeWorkspaceLabelFrame(currentY: inout CGFloat) -> CGRect {
@@ -64,14 +64,43 @@ struct OverviewLayoutGeometry {
         return frame
     }
 
+    func visibleFrame(top: CGFloat, scale: CGFloat) -> CGRect {
+        let size = CGSize(width: screenFrame.width * scale, height: screenFrame.height * scale)
+        return CGRect(
+            x: screenFrame.midX - size.width / 2,
+            y: top - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    func ribbonFrame(for visibleFrame: CGRect) -> CGRect {
+        CGRect(
+            x: screenFrame.minX + scaledWindowPadding,
+            y: visibleFrame.minY,
+            width: availableWidth,
+            height: visibleFrame.height
+        )
+    }
+
+    func project(_ monitorLocalFrame: CGRect, into visibleFrame: CGRect, scale: CGFloat) -> CGRect {
+        CGRect(
+            x: visibleFrame.minX + monitorLocalFrame.minX * scale,
+            y: visibleFrame.minY + monitorLocalFrame.minY * scale,
+            width: max(monitorLocalFrame.width * scale, 1),
+            height: max(monitorLocalFrame.height * scale, 1)
+        )
+    }
+
     func makeWorkspaceSection(
         workspace: OverviewWorkspaceLayoutItem,
         windows: [OverviewWindowItem],
         labelFrame: CGRect,
-        gridFrame: CGRect,
+        visibleFrame: CGRect,
         currentY: inout CGFloat
     ) -> OverviewWorkspaceSection {
-        let sectionBottom = gridFrame.minY
+        let ribbonFrame = ribbonFrame(for: visibleFrame)
+        let sectionBottom = ribbonFrame.minY
         let sectionFrame = CGRect(
             x: screenFrame.minX,
             y: sectionBottom,
@@ -85,29 +114,32 @@ struct OverviewLayoutGeometry {
             windows: windows,
             sectionFrame: sectionFrame,
             labelFrame: labelFrame,
-            gridFrame: gridFrame,
-            isActive: workspace.isActive
+            gridFrame: ribbonFrame,
+            isActive: workspace.isActive,
+            displayId: workspace.displayId,
+            viewportFrame: monitorLocalFrame,
+            visibleFrame: visibleFrame,
+            ribbonFrame: ribbonFrame
         )
         currentY = section.sectionFrame.minY - scaledWorkspaceSectionPadding
         return section
     }
 
-    func workspacePreviewScale(
-        for sourceSize: CGSize
-    ) -> CGFloat {
-        let safeWidth = max(sourceSize.width, 1)
-        let safeHeight = max(sourceSize.height, 1)
-        let maxPreviewWidth = min(
-            availableWidth,
-            screenFrame.width * 0.72 * metricsScale
+    func buildEmptyWorkspaceSection(
+        workspace: OverviewWorkspaceLayoutItem,
+        currentY: inout CGFloat
+    ) -> OverviewWorkspaceSection {
+        let labelFrame = makeWorkspaceLabelFrame(currentY: &currentY)
+        let visibleFrame = visibleFrame(
+            top: currentY,
+            scale: stripScale
         )
-        let maxPreviewHeight = max(
-            thumbnailWidth / OverviewLayoutMetrics.thumbnailAspectRatio,
-            screenFrame.height * 0.42 * metricsScale
-        )
-        return max(
-            0.01,
-            min(maxPreviewWidth / safeWidth, maxPreviewHeight / safeHeight)
+        return makeWorkspaceSection(
+            workspace: workspace,
+            windows: [],
+            labelFrame: labelFrame,
+            visibleFrame: visibleFrame,
+            currentY: &currentY
         )
     }
 
@@ -122,7 +154,7 @@ struct OverviewLayoutGeometry {
             windowData.title.localizedCaseInsensitiveContains(searchQuery) ||
             windowData.appName.localizedCaseInsensitiveContains(searchQuery)
 
-        return OverviewWindowItem(
+        var item = OverviewWindowItem(
             handle: handle,
             windowId: windowData.token.windowId,
             workspaceId: workspaceId,
@@ -133,6 +165,9 @@ struct OverviewLayoutGeometry {
             overviewFrame: overviewFrame,
             matchesSearch: matchesSearch
         )
+        item.isNativeFullscreen = windowData.isNativeFullscreen
+        item.contentScale = stripScale
+        return item
     }
 
     func totalContentHeight(currentY: CGFloat) -> CGFloat {

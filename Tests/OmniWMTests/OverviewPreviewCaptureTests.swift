@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 @testable import OmniWM
@@ -74,8 +74,8 @@ final class OverviewPreviewCaptureTests: XCTestCase {
         }
         driver.streams[0].output.offer(frame)
         await fulfillment(of: [published], timeout: 1)
-        XCTAssertTrue(capture.previewCache[first] === frame)
-        XCTAssertNil(capture.previewCache[second])
+        XCTAssertTrue(capture.preview(for: first) === frame)
+        XCTAssertNil(capture.preview(for: second))
         capture.clear()
         driver.completeAllStarts()
         await driver.waitForStops(2)
@@ -124,7 +124,7 @@ final class OverviewPreviewCaptureTests: XCTestCase {
         await driver.waitForStarts(6)
         await driver.waitForStops(5)
         XCTAssertEqual(driver.streams.filter { $0.stopCount == 1 }.count, 5)
-        XCTAssertTrue(capture.previewCache.isEmpty)
+        XCTAssertEqual(capture.cachedByteCount, 0)
         driver.completeAllStarts()
         capture.clear()
     }
@@ -145,9 +145,94 @@ final class OverviewPreviewCaptureTests: XCTestCase {
         await fulfillment(of: [published], timeout: 1)
         driver.completeAllStarts()
         capture.reconcile(represented: [handle], visible: [])
-        XCTAssertTrue(capture.previewCache[handle] === frame)
+        XCTAssertTrue(capture.preview(for: handle) === frame)
         capture.reconcile(represented: [], visible: [])
-        XCTAssertNil(capture.previewCache[handle])
+        XCTAssertNil(capture.preview(for: handle))
+    }
+
+    @MainActor
+    func testClearRetainsFramesUntilReconcilePrunesOrPressureReleasesThem() async throws {
+        let driver = OverviewPreviewTestDriver()
+        let capture = driver.makeCapture()
+        let handle = WindowHandle(id: WindowToken(pid: 123, windowId: 456))
+        let request = OverviewPreviewRequest(handle: handle, pixelWidth: 80, pixelHeight: 60)
+        capture.reconcile(represented: [handle], visible: [request])
+        await driver.waitForStarts(1)
+        driver.completeAllStarts()
+        let frame = try makeOverviewPreviewFrame()
+        let published = expectation(description: "frame published")
+        var clearedHandles: [WindowHandle] = []
+        capture.onPreview = { handle, preview in
+            if preview === frame { published.fulfill() }
+            if preview == nil { clearedHandles.append(handle) }
+        }
+        driver.streams[0].output.offer(frame)
+        await fulfillment(of: [published], timeout: 1)
+
+        capture.releaseCache()
+        XCTAssertTrue(capture.preview(for: handle) === frame, "Pressure must not blank a card with a live source")
+        capture.clear()
+        await driver.waitForStops(1)
+        XCTAssertTrue(capture.preview(for: handle) === frame)
+        XCTAssertTrue(clearedHandles.isEmpty)
+
+        capture.reconcile(represented: [handle], visible: [request])
+        await driver.waitForStarts(2)
+        XCTAssertTrue(capture.preview(for: handle) === frame)
+        capture.clear()
+        capture.reconcile(represented: [], visible: [])
+        XCTAssertNil(capture.preview(for: handle))
+        XCTAssertEqual(clearedHandles.map(\.id), [handle.id])
+
+        capture.reconcile(represented: [handle], visible: [request])
+        await driver.waitForStarts(3)
+        driver.completeAllStarts()
+        let second = try makeOverviewPreviewFrame()
+        let republished = expectation(description: "second frame published")
+        capture.onPreview = { _, preview in
+            if preview === second { republished.fulfill() }
+            if preview == nil { clearedHandles.append(handle) }
+        }
+        try XCTUnwrap(driver.streams.last).output.offer(second)
+        await fulfillment(of: [republished], timeout: 1)
+        capture.clear()
+        capture.releaseCache()
+        XCTAssertEqual(capture.cachedByteCount, 0)
+        XCTAssertEqual(clearedHandles.count, 2)
+    }
+
+    @MainActor
+    func testTraceRecordsRequestStartAndFirstFrameOnce() async throws {
+        let trace = OverviewFrameTrace.shared
+        trace.beginCapture()
+        defer {
+            trace.endCapture()
+            trace.releaseStorage()
+        }
+        let driver = OverviewPreviewTestDriver()
+        let capture = driver.makeCapture()
+        let handles = (1 ... 5).map { WindowHandle(id: WindowToken(pid: 123, windowId: $0)) }
+        capture.reconcile(represented: Set(handles), visible: handles.map {
+            OverviewPreviewRequest(handle: $0, pixelWidth: 80, pixelHeight: 60)
+        })
+        await driver.waitForStarts(4)
+        driver.streams[0].completeStart()
+        await driver.waitForStarts(5)
+        for frame in [try makeOverviewPreviewFrame(), try makeOverviewPreviewFrame()] {
+            let published = expectation(description: "frame published")
+            capture.onPreview = { _, preview in if preview === frame { published.fulfill() } }
+            driver.streams[0].output.offer(frame)
+            await fulfillment(of: [published], timeout: 1)
+        }
+
+        let lines = trace.dump().split(separator: "\n").map(String.init)
+        XCTAssertEqual(lines.filter { $0.hasPrefix("event=previewRequested ") }.count, 5)
+        XCTAssertEqual(lines.filter { $0.hasPrefix("event=previewStarted ") }.count, 1)
+        let arrived = lines.filter { $0.hasPrefix("event=previewArrived ") }
+        XCTAssertEqual(arrived.count, 1)
+        XCTAssertTrue(arrived.first?.contains(" gen=1 seq=1 ") == true, arrived.first ?? "missing")
+        capture.clear()
+        driver.completeAllStarts()
     }
 
     @MainActor
@@ -169,7 +254,7 @@ final class OverviewPreviewCaptureTests: XCTestCase {
         driver.completeAllStarts()
         await driver.waitForStarts(2)
         await driver.waitForStops(1)
-        XCTAssertTrue(capture.previewCache.isEmpty)
+        XCTAssertEqual(capture.cachedByteCount, 0)
         XCTAssertEqual(driver.streams[0].stopCount, 1)
         driver.streams[0].output.offer(frame)
         XCTAssertNil(driver.streams[0].output.take())

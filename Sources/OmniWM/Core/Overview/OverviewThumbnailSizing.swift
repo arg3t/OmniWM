@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 
@@ -22,7 +22,10 @@ enum OverviewThumbnailSizing {
             let scale = max(projection.backingScaleFactor, 1)
             for section in projection.layout.workspaceSections {
                 for window in section.windows {
-                    guard window.overviewFrame.size.hasFinitePositiveDimensions(),
+                    guard window.isDisplayed,
+                          window.overviewFrame.size.hasFinitePositiveDimensions(),
+                          section.clipFrame(for: window).isEmpty || section.clipFrame(for: window)
+                          .intersects(window.overviewFrame),
                           OverviewRenderGeometry.shouldRender(
                               frame: window.overviewFrame,
                               visibleContentRect: visibleContent

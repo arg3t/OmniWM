@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -31,6 +31,14 @@ class NiriWindow: NiriNode {
     var constraints: WindowSizeConstraints = .unconstrained {
         didSet {
             if oldValue != constraints {
+                invalidateAxisSolveInputs()
+            }
+        }
+    }
+
+    var packingHints: ObservedPackingHints = .none {
+        didSet {
+            if oldValue != packingHints {
                 invalidateAxisSolveInputs()
             }
         }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 @testable import OmniWM
@@ -109,6 +109,8 @@ final class MoveWindowToMonitorIPCCommandTests: XCTestCase {
                         "__fish_seen_subcommand_from command; and __fish_seen_subcommand_from move-to-monitor"
                     )
                 )
+            case .nu:
+                XCTAssertTrue(script.contains("\"move-to-monitor\": [\"down\" \"left\" \"right\" \"up\"]"))
             }
         }
     }

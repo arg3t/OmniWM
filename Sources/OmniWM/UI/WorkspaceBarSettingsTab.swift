@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import SwiftUI
@@ -142,7 +142,10 @@ private struct GlobalBarSettingsSection: View {
                 .onChange(of: settings.workspaceBar.notchMode) { _, _ in
                     controller.updateWorkspaceBarSettings()
                 }
-                .help("Move the bar below the notch, or split it into islands on both sides of the notch")
+                .help(
+                    "Move below the notch, split around it, or fill the area to its left, covering application menus. "
+                        + "Without a notch, Fill Left covers the left half of the menu bar."
+                )
 
                 if settings.workspaceBar.notchMode.isSplit {
                     SettingsSliderRow(
@@ -228,6 +231,47 @@ private struct GlobalBarSettingsSection: View {
                     controller.updateWorkspaceBarSettings()
                 }
 
+                SettingsSliderRow(
+                    label: "Inactive Icon Opacity",
+                    value: Binding(
+                        get: { settings.workspaceBar.inactiveIconOpacity ?? 0.5 },
+                        set: { settings.workspaceBar.inactiveIconOpacity = $0 }
+                    ),
+                    range: 0 ... 1,
+                    step: 0.05,
+                    valueText: "\(Int((settings.workspaceBar.inactiveIconOpacity ?? 0.5) * 100))%",
+                    resetAction: { settings.workspaceBar.inactiveIconOpacity = nil },
+                    resetHelp: "Reset to System Default"
+                )
+                .onChange(of: settings.workspaceBar.inactiveIconOpacity) { _, _ in
+                    controller.updateWorkspaceBarSettings()
+                }
+                .help("Opacity of app icons that are not focused")
+
+                Toggle("Transparent Background", isOn: Bindable(settings.workspaceBar).transparentBackground)
+                    .help("Hide the workspace bar material, tint, and border while keeping its contents interactive.")
+                    .onChange(of: settings.workspaceBar.transparentBackground) { _, _ in
+                        controller.updateWorkspaceBarSettings()
+                    }
+
+                Toggle("Show Item Backgrounds", isOn: Bindable(settings.workspaceBar).showItemBackgrounds)
+                    .help("Show material backgrounds behind workspace groups, floating windows, scratchpad, and stats.")
+                    .onChange(of: settings.workspaceBar.showItemBackgrounds) { _, _ in
+                        controller.updateWorkspaceBarSettings()
+                    }
+
+                Toggle("Solid Black Background", isOn: Bindable(settings.workspaceBar).solidBlackBackground)
+                    .help("Fill the workspace bar with fully opaque black, overriding the tint, material, and border.")
+                    .onChange(of: settings.workspaceBar.solidBlackBackground) { _, _ in
+                        controller.updateWorkspaceBarSettings()
+                    }
+
+                Toggle("Show Accent Highlights", isOn: Bindable(settings.workspaceBar).showAccentHighlights)
+                    .help("Show the focused-workspace outline and focused-icon accent glow.")
+                    .onChange(of: settings.workspaceBar.showAccentHighlights) { _, _ in
+                        controller.updateWorkspaceBarSettings()
+                    }
+
                 Toggle("Custom Accent Color", isOn: customAccentColorBinding)
 
                 if settings.workspaceBar.accentColor != nil {
@@ -304,176 +348,6 @@ private struct GlobalBarSettingsSection: View {
             try? await Task.sleep(for: .milliseconds(16))
             guard !Task.isCancelled else { return }
             controller.updateWorkspaceBarAppearance()
-        }
-    }
-}
-
-private struct MonitorBarSettingsSection: View {
-    @Bindable var settings: SettingsStore
-    @Bindable var controller: WMController
-    let monitor: Monitor
-
-    private var monitorSettings: MonitorBarSettings {
-        settings.workspaceBar.settings(for: monitor) ?? MonitorBarSettings(
-            monitorName: monitor.name
-        )
-    }
-
-    private func updateSetting(_ update: (inout MonitorBarSettings) -> Void) {
-        var ms = monitorSettings
-        update(&ms)
-        settings.workspaceBar.update(ms, for: monitor)
-        controller.updateWorkspaceBarSettings()
-    }
-
-    var body: some View {
-        let ms = monitorSettings
-
-        Section("Workspace Bar") {
-            OverridableToggle(
-                label: "Enable Workspace Bar",
-                value: ms.enabled,
-                globalValue: settings.workspaceBar.enabled,
-                onChange: { newValue in updateSetting { $0.enabled = newValue } },
-                onReset: { updateSetting { $0.enabled = nil } }
-            )
-
-            OverridableToggle(
-                label: "Show Workspace Labels",
-                value: ms.showLabels,
-                globalValue: settings.workspaceBar.showLabels,
-                onChange: { newValue in updateSetting { $0.showLabels = newValue } },
-                onReset: { updateSetting { $0.showLabels = nil } }
-            )
-
-            OverridableToggle(
-                label: "Show Floating Windows",
-                value: ms.showFloatingWindows,
-                globalValue: settings.workspaceBar.showFloatingWindows,
-                onChange: { newValue in updateSetting { $0.showFloatingWindows = newValue } },
-                onReset: { updateSetting { $0.showFloatingWindows = nil } }
-            )
-
-            OverridableToggle(
-                label: "Deduplicate App Icons",
-                value: ms.deduplicateAppIcons,
-                globalValue: settings.workspaceBar.deduplicateAppIcons,
-                onChange: { newValue in updateSetting { $0.deduplicateAppIcons = newValue } },
-                onReset: { updateSetting { $0.deduplicateAppIcons = nil } }
-            )
-            .help("Group workspace windows by app with badge counts; scratchpad pills always group by app")
-
-            OverridableToggle(
-                label: "Hide Empty Workspaces",
-                value: ms.hideEmptyWorkspaces,
-                globalValue: settings.workspaceBar.hideEmptyWorkspaces,
-                onChange: { newValue in updateSetting { $0.hideEmptyWorkspaces = newValue } },
-                onReset: { updateSetting { $0.hideEmptyWorkspaces = nil } }
-            )
-
-            OverridableToggle(
-                label: "Reserve Space for Workspace Bar",
-                value: ms.reserveLayoutSpace,
-                globalValue: settings.workspaceBar.reserveLayoutSpace,
-                onChange: { newValue in updateSetting { $0.reserveLayoutSpace = newValue } },
-                onReset: { updateSetting { $0.reserveLayoutSpace = nil } }
-            )
-            .help(
-                "Reserve tiled layout space using the configured workspace bar height."
-            )
-
-            OverridablePicker(
-                label: "Notch Mode",
-                value: ms.notchMode,
-                globalValue: settings.workspaceBar.notchMode,
-                options: WorkspaceBarNotchMode.allCases,
-                displayName: { $0.displayName },
-                onChange: { newValue in updateSetting { $0.notchMode = newValue } },
-                onReset: { updateSetting { $0.notchMode = nil } }
-            )
-            .help("Move the bar below the notch, or split it into islands on both sides of the notch")
-
-            OverridableSlider(
-                label: "Active Zone Width",
-                value: ms.notchActiveZoneWidth,
-                globalValue: settings.workspaceBar.notchActiveZoneWidth,
-                range: 100 ... 400,
-                step: 10,
-                formatter: { "\(Int($0)) px" },
-                onChange: { newValue in updateSetting { $0.notchActiveZoneWidth = newValue } },
-                onReset: { updateSetting { $0.notchActiveZoneWidth = nil } }
-            )
-            .help("Width of the zone next to the notch that the focused workspace stays centered in")
-        }
-
-        Section("Position & Level") {
-            OverridablePicker(
-                label: "Position",
-                value: ms.position,
-                globalValue: settings.workspaceBar.position,
-                options: WorkspaceBarPosition.allCases,
-                displayName: { $0.displayName },
-                onChange: { newValue in updateSetting { $0.position = newValue } },
-                onReset: { updateSetting { $0.position = nil } }
-            )
-
-            OverridablePicker(
-                label: "Window Level",
-                value: ms.windowLevel,
-                globalValue: settings.workspaceBar.windowLevel,
-                options: WorkspaceBarWindowLevel.allCases,
-                displayName: { $0.displayName },
-                onChange: { newValue in updateSetting { $0.windowLevel = newValue } },
-                onReset: { updateSetting { $0.windowLevel = nil } }
-            )
-        }
-
-        Section("Position Offset") {
-            OverridableStepper(
-                label: "X Offset",
-                value: ms.xOffset,
-                globalValue: settings.workspaceBar.xOffset,
-                step: 10,
-                formatter: { "\(Int($0)) px" },
-                onChange: { newValue in updateSetting { $0.xOffset = newValue } },
-                onReset: { updateSetting { $0.xOffset = nil } }
-            )
-            .help("Horizontal offset (negative = left, positive = right)")
-
-            OverridableStepper(
-                label: "Y Offset",
-                value: ms.yOffset,
-                globalValue: settings.workspaceBar.yOffset,
-                step: 10,
-                formatter: { "\(Int($0)) px" },
-                onChange: { newValue in updateSetting { $0.yOffset = newValue } },
-                onReset: { updateSetting { $0.yOffset = nil } }
-            )
-            .help("Vertical offset (negative = down, positive = up)")
-        }
-
-        Section("Appearance") {
-            OverridableSlider(
-                label: "Bar Height",
-                value: ms.height,
-                globalValue: settings.workspaceBar.height,
-                range: 20 ... 40,
-                step: 2,
-                formatter: { "\(Int($0)) px" },
-                onChange: { newValue in updateSetting { $0.height = newValue } },
-                onReset: { updateSetting { $0.height = nil } }
-            )
-
-            OverridableSlider(
-                label: "Background Opacity",
-                value: ms.backgroundOpacity,
-                globalValue: settings.workspaceBar.backgroundOpacity,
-                range: 0 ... 0.5,
-                step: 0.05,
-                formatter: { "\(Int($0 * 100))%" },
-                onChange: { newValue in updateSetting { $0.backgroundOpacity = newValue } },
-                onReset: { updateSetting { $0.backgroundOpacity = nil } }
-            )
         }
     }
 }

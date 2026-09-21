@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import SwiftUI
@@ -61,7 +61,8 @@ struct MonitorSetupGuide: View {
             routingMode: settings.monitors.routingMode,
             arrangements: settings.monitors.arrangements,
             mouseWarpEnabled: settings.pointer.enabled,
-            workspaceConfigurations: settings.workspaces.configurations
+            workspaceConfigurations: settings.workspaces.configurations,
+            monitorRanking: settings.monitors.ranking
         ))
         _draftMonitors = State(initialValue: sortedMonitors)
         _liveMonitors = State(initialValue: sortedMonitors)
@@ -243,7 +244,8 @@ struct MonitorSetupGuide: View {
             routingMode: settings.monitors.routingMode,
             arrangements: settings.monitors.arrangements,
             mouseWarpEnabled: draft.mouseWarpEnabled,
-            workspaceConfigurations: settings.workspaces.configurations
+            workspaceConfigurations: settings.workspaces.configurations,
+            monitorRanking: settings.monitors.ranking
         )
         selectedMonitor = monitors.first?.id
         confirmedMacOSArrangement = false

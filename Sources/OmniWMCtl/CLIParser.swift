@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 import OmniWMIPC
@@ -300,7 +300,7 @@ enum CLIParser {
             "  omniwmctl ping",
             "  omniwmctl version",
             "  omniwmctl help",
-            "  omniwmctl completion <zsh|bash|fish>"
+            "  omniwmctl completion <\(CLIShell.allCases.map(\.rawValue).joined(separator: "|"))>"
         ]
         lines += commandLines.map { "  omniwmctl \($0)" }
         lines += ruleLines.map { "  omniwmctl \($0)" }

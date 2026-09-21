@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -12,13 +12,21 @@ struct OverviewAppearance: Equatable {
     let normalBorder: SettingsColor
     let hoveredBorder: SettingsColor
     let selectedBorder: SettingsColor
+    let focusBorder: BorderConfig?
 
     @MainActor
-    init(settings: SettingsStore) {
+    init(settings: SettingsStore, isDark: Bool) {
         backdrop = settings.overview.backdropColor
         normalBorder = settings.overview.normalBorderColor
         hoveredBorder = settings.overview.hoveredBorderColor
-        selectedBorder = settings.overview.selectedBorderColor
+        if settings.overview.matchFocusBorder {
+            let config = BorderConfig.from(settings: settings, isDark: isDark)
+            selectedBorder = config.color
+            focusBorder = config
+        } else {
+            selectedBorder = settings.overview.selectedBorderColor
+            focusBorder = nil
+        }
     }
 
     var renderPalette: OverviewRenderPalette {
@@ -26,7 +34,8 @@ struct OverviewAppearance: Equatable {
             backdropColor: backdrop,
             normalBorderColor: normalBorder,
             hoveredBorderColor: hoveredBorder,
-            selectedBorderColor: selectedBorder
+            selectedBorderColor: selectedBorder,
+            focusBorder: focusBorder
         )
     }
 }
@@ -37,15 +46,15 @@ struct OverviewPresentation {
     private var appearance: OverviewAppearance
     private(set) var renderPalette: OverviewRenderPalette
 
-    init(settings: SettingsStore) {
-        appearance = OverviewAppearance(settings: settings)
+    init(settings: SettingsStore, isDark: Bool) {
+        appearance = OverviewAppearance(settings: settings, isDark: isDark)
         configuredScale = OverviewLayoutCalculator.clampedScale(CGFloat(settings.overview.zoom))
         renderPalette = appearance.renderPalette
     }
 
-    mutating func update(settings: SettingsStore) -> (scaleChanged: Bool, appearanceChanged: Bool) {
+    mutating func update(settings: SettingsStore, isDark: Bool) -> (scaleChanged: Bool, appearanceChanged: Bool) {
         let nextConfiguredScale = OverviewLayoutCalculator.clampedScale(CGFloat(settings.overview.zoom))
-        let nextAppearance = OverviewAppearance(settings: settings)
+        let nextAppearance = OverviewAppearance(settings: settings, isDark: isDark)
         let scaleChanged = abs(nextConfiguredScale - configuredScale) > OverviewViewportProjection.zoomEpsilon
         let appearanceChanged = nextAppearance != appearance
         configuredScale = nextConfiguredScale

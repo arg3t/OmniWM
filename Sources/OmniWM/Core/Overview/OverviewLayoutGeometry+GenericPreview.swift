@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -8,6 +8,7 @@ extension OverviewLayoutGeometry {
     func buildGenericWorkspaceSection(
         workspace: OverviewWorkspaceLayoutItem,
         windows: [(WindowHandle, OverviewWindowLayoutData)],
+        dwindleGroups: [OverviewDwindleGroup] = [],
         searchQuery: String,
         currentY: inout CGFloat
     ) -> OverviewWorkspaceSection? {
@@ -18,63 +19,73 @@ extension OverviewLayoutGeometry {
         }
 
         let labelFrame = makeWorkspaceLabelFrame(currentY: &currentY)
+        let visibleFrame = visibleFrame(top: currentY, scale: stripScale)
 
         var windowItems: [OverviewWindowItem] = []
         windowItems.reserveCapacity(orderedWindows.count)
+        let windowsByHandle = dwindleGroups.isEmpty ? [:] : Dictionary(uniqueKeysWithValues: windows)
+        let groupByHandle = Dictionary(uniqueKeysWithValues: dwindleGroups.enumerated().flatMap { index, group in
+            group.windowHandles.map { ($0, index) }
+        })
+        var emittedGroups: Set<Int> = []
 
-        let normalizedFrames = orderedWindows.map { normalizedSourceFrame($0.1.frame) }
-        let sourceBounds = boundingRect(for: normalizedFrames)
-        let previewScale = workspacePreviewScale(for: sourceBounds.size)
-        let projectedSize = CGSize(
-            width: sourceBounds.width * previewScale,
-            height: sourceBounds.height * previewScale
-        )
-        let previewOrigin = CGPoint(
-            x: screenFrame.minX + (screenFrame.width - projectedSize.width) / 2,
-            y: currentY - projectedSize.height
-        )
-
-        for ((handle, windowData), sourceFrame) in zip(orderedWindows, normalizedFrames) {
-            let overviewFrame = projectFrame(
-                sourceFrame,
-                from: sourceBounds,
-                previewOrigin: previewOrigin,
-                scale: previewScale
-            )
-
-            windowItems.append(
-                makeWindowItem(
-                    handle: handle,
-                    workspaceId: workspace.id,
-                    windowData: windowData,
-                    overviewFrame: overviewFrame,
-                    searchQuery: searchQuery
-                )
-            )
+        for (handle, windowData) in orderedWindows {
+            if let groupIndex = groupByHandle[handle] {
+                guard emittedGroups.insert(groupIndex).inserted else { continue }
+                let group = dwindleGroups[groupIndex]
+                let members = group.windowHandles.compactMap { member -> OverviewWindowItem? in
+                    guard let data = windowsByHandle[member] else { return nil }
+                    return makeGenericWindowItem(
+                        handle: member, data: data, visibleFrame: visibleFrame, searchQuery: searchQuery
+                    )
+                }
+                let displayed = members.first { !searchQuery.isEmpty && $0.matchesSearch }?.handle
+                    ?? members.first { $0.handle == group.activeHandle }?.handle ?? members.first?.handle
+                for var member in members {
+                    member.isDisplayed = member.handle == displayed
+                    windowItems.append(member)
+                }
+            } else {
+                windowItems.append(makeGenericWindowItem(
+                    handle: handle, data: windowData, visibleFrame: visibleFrame, searchQuery: searchQuery
+                ))
+            }
         }
 
-        let gridFrame = CGRect(
-            origin: previewOrigin,
-            size: projectedSize
-        )
-
-        let section = makeWorkspaceSection(
+        return makeWorkspaceSection(
             workspace: workspace,
             windows: windowItems,
             labelFrame: labelFrame,
-            gridFrame: gridFrame,
+            visibleFrame: visibleFrame,
             currentY: &currentY
         )
+    }
 
-        return section
+    private func makeGenericWindowItem(
+        handle: WindowHandle,
+        data: OverviewWindowLayoutData,
+        visibleFrame: CGRect,
+        searchQuery: String
+    ) -> OverviewWindowItem {
+        makeWindowItem(
+            handle: handle,
+            workspaceId: data.workspaceId,
+            windowData: data,
+            overviewFrame: project(
+                normalizedSourceFrame(data.floatingPreviewFrame ?? data.frame),
+                into: visibleFrame,
+                scale: stripScale
+            ),
+            searchQuery: searchQuery
+        )
     }
 
     private func compareWindowsForPreview(
         _ lhs: OverviewWindowLayoutData,
         _ rhs: OverviewWindowLayoutData
     ) -> Bool {
-        let lhsFrame = normalizedSourceFrame(lhs.frame)
-        let rhsFrame = normalizedSourceFrame(rhs.frame)
+        let lhsFrame = normalizedSourceFrame(lhs.floatingPreviewFrame ?? lhs.frame)
+        let rhsFrame = normalizedSourceFrame(rhs.floatingPreviewFrame ?? rhs.frame)
         if abs(lhsFrame.maxY - rhsFrame.maxY) > 1 {
             return lhsFrame.maxY > rhsFrame.maxY
         }
@@ -84,43 +95,13 @@ extension OverviewLayoutGeometry {
         return lhs.title < rhs.title
     }
 
-    private func normalizedSourceFrame(_ frame: CGRect) -> CGRect {
+    func normalizedSourceFrame(_ frame: CGRect) -> CGRect {
         let standardized = frame.standardized
         return CGRect(
             x: standardized.minX,
             y: standardized.minY,
             width: max(standardized.width, 1),
             height: max(standardized.height, 1)
-        )
-    }
-
-    private func boundingRect(for frames: [CGRect]) -> CGRect {
-        let bounds = frames.reduce(into: CGRect.null) { partial, frame in
-            partial = partial.union(frame)
-        }
-        if bounds.isNull {
-            return CGRect(x: 0, y: 0, width: 1, height: 1)
-        }
-
-        return CGRect(
-            x: bounds.minX,
-            y: bounds.minY,
-            width: max(bounds.width, 1),
-            height: max(bounds.height, 1)
-        )
-    }
-
-    private func projectFrame(
-        _ sourceFrame: CGRect,
-        from sourceBounds: CGRect,
-        previewOrigin: CGPoint,
-        scale: CGFloat
-    ) -> CGRect {
-        CGRect(
-            x: previewOrigin.x + (sourceFrame.minX - sourceBounds.minX) * scale,
-            y: previewOrigin.y + (sourceFrame.minY - sourceBounds.minY) * scale,
-            width: sourceFrame.width * scale,
-            height: sourceFrame.height * scale
         )
     }
 }

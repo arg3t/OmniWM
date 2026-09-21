@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreGraphics
@@ -14,7 +14,7 @@ struct OverviewRenderPalette {
         let alpha: Double
     }
 
-    private static let backdropDefault = Components(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
+    private static let backdropDefault = Components(red: 0.05, green: 0.05, blue: 0.08, alpha: 0)
     private static let normalBorderDefault = Components(red: 0.3, green: 0.3, blue: 0.35, alpha: 0.5)
     private static let hoveredBorderDefault = Components(red: 0.4, green: 0.6, blue: 1.0, alpha: 1.0)
     private static let selectedBorderDefault = Components(red: 0.3, green: 0.8, blue: 0.4, alpha: 1.0)
@@ -30,17 +30,20 @@ struct OverviewRenderPalette {
     let normalBorder: CGColor
     let hoveredBorder: CGColor
     let selectedBorder: CGColor
+    let focusBorder: BorderConfig?
 
     init(
         backdropColor: SettingsColor,
         normalBorderColor: SettingsColor,
         hoveredBorderColor: SettingsColor,
-        selectedBorderColor: SettingsColor
+        selectedBorderColor: SettingsColor,
+        focusBorder: BorderConfig? = nil
     ) {
         backdrop = Self.cgColor(backdropColor, fallback: Self.backdropDefault)
         normalBorder = Self.cgColor(normalBorderColor, fallback: Self.normalBorderDefault)
         hoveredBorder = Self.cgColor(hoveredBorderColor, fallback: Self.hoveredBorderDefault)
         selectedBorder = Self.cgColor(selectedBorderColor, fallback: Self.selectedBorderDefault)
+        self.focusBorder = focusBorder
     }
 
     private init(
@@ -53,6 +56,7 @@ struct OverviewRenderPalette {
         self.normalBorder = normalBorder
         self.hoveredBorder = hoveredBorder
         self.selectedBorder = selectedBorder
+        focusBorder = nil
     }
 
     private static func cgColor(_ color: SettingsColor, fallback: Components) -> CGColor {

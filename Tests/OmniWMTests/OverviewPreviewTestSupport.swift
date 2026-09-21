@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreVideo
 import Foundation
@@ -56,12 +56,14 @@ final class OverviewPreviewTestDriver {
 
     func makeCapture(
         environment: OverviewEnvironment = OverviewEnvironment(),
-        ownedWindowRegistry: OwnedWindowRegistry = OwnedWindowRegistry()
+        ownedWindowRegistry: OwnedWindowRegistry = OwnedWindowRegistry(),
+        maximumRetainedBytes: Int = 128 * 1_024 * 1_024
     ) -> OverviewThumbnailCapture {
         OverviewThumbnailCapture(
             environment: environment,
             ownedWindowRegistry: ownedWindowRegistry,
             hasCaptureAccess: { true },
+            maximumRetainedBytes: maximumRetainedBytes,
             streamFactory: { [self] request, output in
                 let stream = OverviewPreviewTestStream(request: request, output: output, onStart: { [self] in
                     startedCount += 1

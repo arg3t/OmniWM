@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -23,9 +23,11 @@ final class OverviewFocusSession {
         case focusWindow(WindowHandle)
     }
 
-    struct PostCloseHandoffValidity {
+    struct PostCloseHandoffValidity: Equatable {
         let intentIssuanceWatermark: IntentID
-        let focusEpochSeq: UInt64
+        let selectedManagedToken: WindowToken?
+        let nativeFocusOwner: NativeFocusOwner
+        let pendingFocusedToken: WindowToken?
     }
 
     var previousFrontmostApplicationPID: pid_t?
@@ -33,8 +35,6 @@ final class OverviewFocusSession {
     var pendingFocusTargetWindow: WindowHandle?
     var pendingPostCloseHandoffValidity: PostCloseHandoffValidity?
     private var postCloseHandoffGeneration: UInt64 = 0
-    private var selectionDismissTask: Task<Void, Never>?
-    private var selectionDismissGeneration: UInt64 = 0
 
     init(
         wmController: WMController,
@@ -50,34 +50,6 @@ final class OverviewFocusSession {
 
     func connect(overview: OverviewController) {
         self.overview = overview
-    }
-
-    func scheduleSelectionDismissal(_ handle: WindowHandle) {
-        invalidateSelectionDismissal()
-        let generation = selectionDismissGeneration
-        let delayNanoseconds = environment.selectionDismissDelayNanoseconds
-        selectionDismissTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: delayNanoseconds)
-            } catch {
-                return
-            }
-            guard let self,
-                  let overview = self.overview,
-                  self.selectionDismissGeneration == generation
-            else {
-                return
-            }
-            self.selectionDismissTask = nil
-            guard case .open = self.state,
-                  self.projection.selectedWindowHandle === handle,
-                  self.wmController?.workspaceManager.handle(for: handle.id) === handle,
-                  self.overviewSnapshot.windows[handle] != nil
-            else {
-                return
-            }
-            overview.dismiss(reason: .selection, targetWindow: handle, animated: true)
-        }
     }
 
     func completeCloseTransition(targetWindow: WindowHandle?, close: () -> Void) {
@@ -124,7 +96,9 @@ final class OverviewFocusSession {
         guard let wmController else { return nil }
         return PostCloseHandoffValidity(
             intentIssuanceWatermark: wmController.intentLedger.issuanceWatermark(),
-            focusEpochSeq: wmController.workspaceManager.worldSeq
+            selectedManagedToken: wmController.workspaceManager.selectedManagedToken,
+            nativeFocusOwner: wmController.workspaceManager.nativeFocusOwner,
+            pendingFocusedToken: wmController.workspaceManager.pendingFocusedToken
         )
     }
 
@@ -140,8 +114,7 @@ final class OverviewFocusSession {
                   let wmController,
                   self.postCloseHandoffGeneration == generation,
                   case .closed = self.state,
-                  wmController.intentLedger.issuanceWatermark() == validity.intentIssuanceWatermark,
-                  wmController.workspaceManager.isSeqEpochCurrent(validity.focusEpochSeq, domains: .focus)
+                  self.currentPostCloseHandoffValidity() == validity
             else {
                 return
             }
@@ -154,12 +127,6 @@ final class OverviewFocusSession {
                 overview.focusTargetWindow(handle)
             }
         }
-    }
-
-    func invalidateSelectionDismissal() {
-        selectionDismissGeneration &+= 1
-        selectionDismissTask?.cancel()
-        selectionDismissTask = nil
     }
 
     func capturePreviousFrontmostApplication() {

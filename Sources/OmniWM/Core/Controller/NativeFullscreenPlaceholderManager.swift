@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreText
@@ -8,6 +8,7 @@ struct NativeFullscreenPlaceholderUpdate: Equatable {
     let originalToken: WindowToken
     let currentToken: WindowToken
     let workspaceId: WorkspaceDescriptor.ID
+    var windowTitle: String = ""
     var frame: CGRect
     var displayContext: NativeFullscreenDisplayContext?
     let selected: Bool

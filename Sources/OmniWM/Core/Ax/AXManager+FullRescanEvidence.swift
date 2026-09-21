@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -82,21 +82,23 @@ extension AXManager {
 
     func fullRescanRunningApplications(
         for pids: Set<pid_t>
-    ) -> [NSRunningApplication] {
-        pids.sorted().compactMap(NSRunningApplication.init(processIdentifier:))
+    ) -> [(pid: pid_t, app: NSRunningApplication)] {
+        pids.sorted().compactMap { pid in
+            guard pid > 0, let app = NSRunningApplication(processIdentifier: pid) else { return nil }
+            return (pid, app)
+        }
     }
 
     func fullRescanAppTargets(
-        _ runningApplications: [NSRunningApplication],
+        _ runningApplications: [(pid: pid_t, app: NSRunningApplication)],
         selection: FullRescanAppTargetSelection,
         requiresTitleForApp: (String?, String?) -> Bool
     ) -> [FullRescanAppTarget] {
         let existingContextPIDs = Set(AppAXContextRegistry.contexts.keys)
         let preservingPIDs = Set(selection.preservingPIDsByWindowId.values)
-        return runningApplications.compactMap { app in
-            let pid = app.processIdentifier
+        return runningApplications.compactMap { pid, app in
             guard selection.includedPIDs?.contains(pid) ?? true,
-                  shouldTrack(app)
+                  shouldTrack(app, pid: pid)
             else {
                 return nil
             }
@@ -109,6 +111,7 @@ extension AXManager {
             ) ?? (selection.allowsEvidenceFreeOneShot ? .oneShot : nil)
             guard let route else { return nil }
             return FullRescanAppTarget(
+                pid: pid,
                 app: app,
                 route: route,
                 inspectionContext: AXWindowInspectionContext.fullRescanInspectionContext(

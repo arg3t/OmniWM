@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -149,10 +149,6 @@ final class CommandPaletteController: NSObject, NSWindowDelegate {
         if selectedMode == .menu {
             loadMenuItemsIfNeeded()
         }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.presentation.focusSearchField()
-        }
     }
 
     func windowDidResignKey(_: Notification) {
@@ -173,9 +169,6 @@ final class CommandPaletteController: NSObject, NSWindowDelegate {
             refreshClipboardItems()
         }
         updateSelectionAfterFilterChange()
-        DispatchQueue.main.async { [weak self] in
-            self?.presentation.focusSearchField()
-        }
     }
 
     private func resolvedInitialMode(_ preferredMode: CommandPaletteMode) -> CommandPaletteMode {

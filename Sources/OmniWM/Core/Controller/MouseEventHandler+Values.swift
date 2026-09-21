@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -50,17 +50,20 @@ extension MouseEventHandler {
         let phaseRawValue: NSEvent.Phase.RawValue
         let timestamp: TimeInterval
         let touches: [GestureTouchSample]
+        let contactSession: MultitouchContactSession?
 
         init(
             location: CGPoint,
             phaseRawValue: NSEvent.Phase.RawValue,
             timestamp: TimeInterval = CACurrentMediaTime(),
-            touches: [GestureTouchSample]
+            touches: [GestureTouchSample],
+            contactSession: MultitouchContactSession? = nil
         ) {
             self.location = location
             self.phaseRawValue = phaseRawValue
             self.timestamp = timestamp
             self.touches = touches
+            self.contactSession = contactSession
         }
     }
 }

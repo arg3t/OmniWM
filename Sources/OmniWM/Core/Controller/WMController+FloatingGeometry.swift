@@ -1,11 +1,30 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
 import OmniWMIPC
 
 extension WMController {
+    func placeFloatingWindow(_ handle: WindowHandle, frame: CGRect) {
+        guard workspaceManager.handle(for: handle.id) === handle,
+              let entry = workspaceManager.entry(for: handle), entry.mode == .floating,
+              entry.layoutReason == .standard,
+              let monitor = workspaceManager.monitorForWorkspace(entry.workspaceId)
+        else { return }
+        let targetFrame = FloatingFrameGeometry.clamped(frame, in: monitor.visibleFrame)
+        workspaceManager.updateFloatingGeometry(
+            frame: targetFrame, for: entry.token, referenceMonitor: monitor, restoreToFloating: true
+        )
+        guard !workspaceManager.isHiddenInCorner(entry.token),
+              shouldApplyFloatingFrameImmediately(for: entry.workspaceId)
+        else { return }
+        axManager.forceApplyNextFrame(for: entry.windowId)
+        axManager.applyFramesParallel([
+            .init(pid: entry.pid, window: entry.axRef, frame: targetFrame)
+        ])
+    }
+
     func liveFrame(for entry: WindowState) -> CGRect? {
         AXWindowService.framePreferFast(entry.axRef)
             ?? axManager.lastAppliedFrame(for: entry.windowId)

@@ -8,7 +8,7 @@ sidebar:
 OmniWM stores its editable configuration at `${XDG_CONFIG_HOME:-$HOME/.config}/omniwm/settings.toml`. `XDG_CONFIG_HOME` is honored only when it is an absolute path beginning with `/`; otherwise OmniWM uses `~/.config/omniwm/settings.toml`. That file is the canonical settings source: it is live-reloaded whenever you save it from an editor, and OmniWM configuration changes made in the Settings window are written back to it. Current files include the top-level key `schemaVersion = 3`.
 
 :::caution[The schema is strict]
-After version upgrades, `settings.toml` is validated as a whole. In a version 3 file, a missing required key invalidates the **entire file**, and the `hotkeys` array must contain every assignable action **exactly once** — an unknown, duplicate, or missing action id rejects the file. Enumerated string keys must use one of their listed values; an unknown value rejects the whole file too. The safest way to edit is to change values in place (or use the Settings window) rather than deleting keys. See the [Settings Reference](/config/settings-reference/) for every key and its default.
+After version upgrades, `settings.toml` is validated as a whole. In a version 3 file, a missing required key invalidates the **entire file**, and the `hotkeys` array must contain every assignable action **exactly once** — an unknown, duplicate, or missing action id rejects the file. Enumerated string keys must use one of their listed values; an unknown value rejects the whole file too. Conflicting trackpad gesture finger-count assignments (see [gestures](/config/settings-reference/#gestures)) reject the whole file as well. The safest way to edit is to change values in place (or use the Settings window) rather than deleting keys. See the [Settings Reference](/config/settings-reference/) for every key and its default.
 :::
 
 ## Opening the file
@@ -68,6 +68,7 @@ The full schema is documented key by key in the [Settings Reference](/config/set
 | [`[focus]`](/config/settings-reference/#focus) | Focus-follows-mouse and monitor-edge focus behavior |
 | [`[mouseWarp]`](/config/settings-reference/#mousewarp) | Cursor warping between monitors |
 | [`[routing]`](/config/settings-reference/#routing) | macOS vs. custom routing and saved arrangements per connected display set |
+| [`[monitors]`](/config/settings-reference/#monitors) | Optional ranking that decides which connected display is Main, Secondary, and so on |
 | [`[gaps]`](/config/settings-reference/#gaps) | Inner and outer gaps |
 | [`[niri]`](/config/settings-reference/#niri) | Scrolling (Niri) layout options |
 | [`[dwindle]`](/config/settings-reference/#dwindle) | Dwindle (BSP) layout options |

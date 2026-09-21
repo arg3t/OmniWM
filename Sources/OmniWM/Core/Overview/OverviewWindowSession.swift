@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -14,6 +14,7 @@ final class OverviewWindowSession {
     private let motionPolicy: MotionPolicy
     var onLayoutsUpdated: (() -> Void)?
     var previewForHandle: ((WindowHandle) -> OverviewPreviewFrame?)?
+    var wallpaperForDisplay: ((CGDirectDisplayID, Int) -> CGImage?)?
     private var dragPreview: (handle: WindowHandle, ghost: OverviewDragGhost)?
 
     var dragPreviewRequest: OverviewPreviewRequest? {
@@ -39,6 +40,10 @@ final class OverviewWindowSession {
         dragPreview?.ghost.moveTo(cursorLocation: cursorLocation)
     }
 
+    func updateDragPreviewFeedback(_ text: String, isValid: Bool) {
+        dragPreview?.ghost.updateFeedback(text, isValid: isValid)
+    }
+
     func endDragPreview() {
         guard let dragPreview else { return }
         self.dragPreview = nil
@@ -48,6 +53,9 @@ final class OverviewWindowSession {
 
     private var windows: [OverviewWindow] = []
     private var windowsByDisplayId: [CGDirectDisplayID: OverviewWindow] = [:]
+    var isTabPickerOpen: Bool {
+        windows.contains(where: \.isTabPickerOpen)
+    }
 
     init(
         projection: OverviewViewportProjection,
@@ -72,6 +80,8 @@ final class OverviewWindowSession {
 
         for monitor in monitors {
             let window = OverviewWindow(monitor: monitor, palette: palette)
+            window.previewForHandle = previewForHandle
+            window.wallpaperForDisplay = wallpaperForDisplay
 
             window.onWindowSelected = { [weak controller, weak self] monitorId, handle in
                 self?.projection.activeInteractionMonitorId = monitorId
@@ -81,6 +91,14 @@ final class OverviewWindowSession {
                 self?.projection.activeInteractionMonitorId = monitorId
                 controller?.closeWindow(handle)
             }
+            bindRibbonEvents(window, controller: controller)
+            window.onWorkspaceSelected = { [weak controller, weak self] monitorId, workspaceId in
+                self?.projection.activeInteractionMonitorId = monitorId
+                controller?.activateWorkspace(workspaceId)
+            }
+            window.onOverflowPillPressed = { [weak controller] monitorId, pill in
+                controller?.input.pageStrip(pill, on: monitorId)
+            }
             window.onDismiss = { [weak controller, weak self] monitorId in
                 self?.projection.activeInteractionMonitorId = monitorId
                 controller?.input.dismissToSelection(animated: true)
@@ -88,13 +106,8 @@ final class OverviewWindowSession {
             window.onScroll = { [weak controller] monitorId, delta in
                 controller?.input.adjustScrollOffset(by: delta, on: monitorId)
             }
-            window.onScrollWithModifiers = { [weak controller] monitorId, delta, modifiers, isPrecise in
-                controller?.input.handleScroll(
-                    delta: delta,
-                    modifiers: modifiers,
-                    isPrecise: isPrecise,
-                    on: monitorId
-                )
+            window.onScrollEvent = { [weak controller] monitorId, event in
+                controller?.input.handleScroll(event, on: monitorId)
             }
             window.onDragBegin = { [weak controller] monitorId, handle, start in
                 controller?.drag.beginDrag(on: monitorId, handle: handle, startPoint: start)
@@ -105,12 +118,25 @@ final class OverviewWindowSession {
             window.onDragEnd = { [weak controller] monitorId, point in
                 controller?.drag.endDrag(on: monitorId, at: point)
             }
-            window.onDragCancel = { [weak controller] in
-                controller?.drag.cancelDrag()
-            }
 
             windows.append(window)
             windowsByDisplayId[monitor.displayId] = window
+        }
+    }
+
+    private func bindRibbonEvents(_ window: OverviewWindow, controller: OverviewController) {
+        window.onClearSearch = { [weak controller, weak self] monitorId in
+            self?.projection.activeInteractionMonitorId = monitorId
+            controller?.input.updateSearchQuery("")
+        }
+        window.onNewWorkspace = { [weak controller] monitorId in
+            controller?.createWorkspace(on: monitorId)
+        }
+        window.onTabSelected = { [weak controller] monitorId, handle in
+            controller?.input.selectTab(handle, on: monitorId)
+        }
+        window.onStripPan = { [weak controller] monitorId, point, delta in
+            controller?.input.panStrip(at: point, by: delta, on: monitorId)
         }
     }
 
@@ -165,7 +191,9 @@ final class OverviewWindowSession {
 
     func updateWindowDisplays(
         state: OverviewState,
-        palette: OverviewRenderPalette? = nil
+        palette: OverviewRenderPalette? = nil,
+        update: OverviewLayoutUpdate = .preserve,
+        on monitorId: Monitor.ID? = nil
     ) {
         for window in windows {
             let layout = projection.layoutsByMonitor[window.monitorId] ?? .init()
@@ -175,7 +203,9 @@ final class OverviewWindowSession {
                 searchQuery: projection.searchQuery,
                 selectedWindowHandle: projection.selectedWindowHandle,
                 palette: palette,
-                animationsEnabled: motionPolicy.animationsEnabled
+                animationsEnabled: motionPolicy.animationsEnabled,
+                selection: projection.selection,
+                update: monitorId == nil || monitorId == window.monitorId ? update : .preserve
             )
         }
         onLayoutsUpdated?()
@@ -184,7 +214,7 @@ final class OverviewWindowSession {
     func updatePreview(_ frame: OverviewPreviewFrame?, for handle: WindowHandle) {
         if dragPreview?.handle === handle { dragPreview?.ghost.updatePreview(frame) }
         for window in windows where projection.layoutsByMonitor[window.monitorId]?.window(for: handle) != nil {
-            window.updatePreview(frame, for: handle)
+            window.updatePreview(frame, for: handle, animated: motionPolicy.animationsEnabled)
         }
     }
 
@@ -200,10 +230,7 @@ final class OverviewWindowSession {
         for window in windows { window.cancelAnimation() }
     }
 
-    func handleModifierFlagsChanged(_ modifierFlags: NSEvent.ModifierFlags) {
-        let optionPressed = modifierFlags.contains(.option)
-        for window in windows {
-            window.cancelPendingDragIfNeeded(optionPressed: optionPressed)
-        }
+    func presentProgress(_ progress: Double) {
+        for window in windows { window.presentProgress(progress) }
     }
 }

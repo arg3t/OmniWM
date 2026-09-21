@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -22,7 +22,8 @@ final class OverviewStructuralActions {
         selectedHandle: WindowHandle
     ) -> StructuralMutationOutcome? {
         guard let wmController,
-              let entry = windowFacts.visibleManagedEntry(for: selectedHandle)
+              let entry = windowFacts.visibleManagedEntry(for: selectedHandle),
+              windowFacts.isStructurallyMutable(entry)
         else {
             return .unchanged
         }

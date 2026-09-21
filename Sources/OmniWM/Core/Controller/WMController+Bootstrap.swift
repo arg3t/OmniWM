@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -14,6 +14,9 @@ extension WMController {
         intentLedger.deadlineWheel = deadlineWheel
         focusPolicyEngine.intentLedger = intentLedger
         focusPolicyEngine.deadlineWheel = deadlineWheel
+        hotkeys.isOverviewMouseButtonCaptured = { [weak self] button in
+            self?.mouseEventHandler.state.capturedOverviewButton == button
+        }
         hotkeys.onCommand = { [weak self] invocation in
             guard let self else { return }
             if !eventIntake.enqueue(.hotkeyInvocation(invocation)) {

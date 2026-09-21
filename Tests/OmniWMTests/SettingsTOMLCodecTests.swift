@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Carbon
 import Foundation
@@ -7,6 +7,36 @@ import Foundation
 import XCTest
 
 final class SettingsTOMLCodecTests: XCTestCase {
+    func testTabRailAppIconsDefaultsAndRoundTrips() throws {
+        var export = SettingsExport.defaults()
+        XCTAssertFalse(export.tabRailAppIcons)
+
+        for enabled in [false, true] {
+            export.tabRailAppIcons = enabled
+            let data = try SettingsTOMLCodec.encode(export)
+            let text = String(decoding: data, as: UTF8.self)
+            let appearanceSection = try XCTUnwrap(text.components(separatedBy: "[appearance]\n").last)
+                .components(separatedBy: "\n[").first
+
+            XCTAssertTrue(try XCTUnwrap(appearanceSection).contains("tabRailAppIcons = \(enabled)"))
+            XCTAssertEqual(try SettingsTOMLCodec.decode(data), export)
+            XCTAssertFalse(SettingsTOMLCodec.unknownKeyPaths(in: data).contains("appearance.tabRailAppIcons"))
+        }
+    }
+
+    func testMissingTabRailAppIconsDefaultsToCompactWithoutMigration() throws {
+        let withoutKey = try canonicalDefaultLines { lines in
+            let index = try XCTUnwrap(lines.firstIndex(of: "tabRailAppIcons = false"))
+            lines.remove(at: index)
+        }
+
+        let result = try SettingsTOMLCodec.decodeForLoad(withoutKey)
+
+        XCTAssertFalse(result.export.tabRailAppIcons)
+        XCTAssertNil(result.migration)
+        XCTAssertNil(result.migratedData)
+    }
+
     func testDefaultTOMLOmitsUnassignableHotkeyActions() throws {
         let toml = String(
             decoding: try SettingsTOMLCodec.encode(.defaults()),
@@ -380,6 +410,32 @@ final class SettingsTOMLCodecTests: XCTestCase {
         XCTAssertNil(decoded.quakeTerminal.opacity)
     }
 
+    func testMonitorRankingRoundTripsInOrderAndTableIsOmittedWhenEmpty() throws {
+        let defaults = String(decoding: try SettingsTOMLCodec.encode(.defaults()), as: UTF8.self)
+        XCTAssertFalse(defaults.contains("[monitors]"))
+        XCTAssertFalse(defaults.contains("ranking"))
+        XCTAssertEqual(try SettingsTOMLCodec.decode(Data(defaults.utf8)).monitorRanking, [])
+
+        var export = SettingsExport.defaults()
+        export.monitorRanking = [
+            OutputId(displayUUID: "22222222-2222-2222-2222-222222222222", name: "DELL U3423WE"),
+            OutputId(displayId: 7, name: "LG HDR 4K"),
+            OutputId(name: "Built-in Retina Display")
+        ]
+
+        let data = try SettingsTOMLCodec.encode(export)
+        let toml = String(decoding: data, as: UTF8.self)
+        XCTAssertTrue(toml.contains("[[monitors.ranking]]"), toml)
+        XCTAssertTrue(toml.contains("displayUUID = \"22222222-2222-2222-2222-222222222222\""), toml)
+
+        let decoded = try SettingsTOMLCodec.decode(data)
+        XCTAssertEqual(decoded.monitorRanking.map(\.name), ["DELL U3423WE", "LG HDR 4K", "Built-in Retina Display"])
+        XCTAssertEqual(decoded.monitorRanking[0].displayUUID, "22222222-2222-2222-2222-222222222222")
+        XCTAssertEqual(decoded.monitorRanking[1].displayId, 7)
+        XCTAssertNil(decoded.monitorRanking[2].displayUUID)
+        XCTAssertNil(decoded.monitorRanking[2].displayId)
+    }
+
     @MainActor
     func testSavePathPreservesUnknownKeys() throws {
         let directory = FileManager.default.temporaryDirectory
@@ -484,6 +540,43 @@ final class SettingsTOMLCodecTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try SettingsTOMLCodec.decode(malformed))
+    }
+
+    func testOverviewGestureSettingsRoundTripAndExistingConfigDefaults() throws {
+        var export = SettingsExport.defaults()
+        export.gestures.overviewGestureEnabled = true
+        export.gestures.overviewGestureFingerCount = .three
+        let encoded = try SettingsTOMLCodec.encode(export)
+        let decoded = try SettingsTOMLCodec.decode(encoded)
+        XCTAssertEqual(decoded.gestures.overviewGestureEnabled, true)
+        XCTAssertEqual(decoded.gestures.overviewGestureFingerCount, .three)
+
+        let oldConfig = String(decoding: encoded, as: UTF8.self)
+            .split(separator: "\n")
+            .filter { !$0.hasPrefix("overviewGesture") }
+            .joined(separator: "\n")
+        let defaults = try SettingsTOMLCodec.decode(Data(oldConfig.utf8))
+        XCTAssertEqual(defaults.gestures.overviewGestureEnabled, false)
+        XCTAssertEqual(defaults.gestures.overviewGestureFingerCount, .four)
+    }
+
+    @MainActor
+    func testOverviewOnlyGestureAvailabilityFollowsEnablement() {
+        let settings = makeSettingsStore()
+        settings.gestures.scrollEnabled = false
+        settings.gestures.workspaceSwipeEnabled = false
+        var changes: [Bool] = []
+        settings.onTrackpadGestureAvailabilityChanged = { changes.append($0) }
+        settings.gestures.overviewGestureEnabled = true
+        XCTAssertTrue(settings.gestures.trackpadGesturesEnabled)
+        settings.gestures.overviewGestureEnabled = false
+        XCTAssertFalse(settings.gestures.trackpadGesturesEnabled)
+        XCTAssertEqual(changes, [true, false])
+    }
+
+    func testOverviewGestureRejectsUnsupportedFingerCount() throws {
+        let data = try defaultsWithReplacements(("overviewGestureFingerCount = 4", "overviewGestureFingerCount = 2"))
+        XCTAssertThrowsError(try SettingsTOMLCodec.decode(data))
     }
 
     func testWorkspaceSwipeSettingsRoundTrip() throws {

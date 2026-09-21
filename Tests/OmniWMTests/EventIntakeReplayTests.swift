@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import ApplicationServices
 import CoreGraphics
@@ -461,6 +461,33 @@ final class EventIntakeReplayTests: XCTestCase {
             return nil
         }
         XCTAssertEqual(deltas, [8, -2])
+    }
+
+    @MainActor
+    func testScrollCoalescingPreservesSourceAndContinuity() {
+        let intake = EventIntake()
+        let sink = RecordingSink()
+        intake.open(sink: sink)
+        defer { intake.close() }
+        var payload = scroll(deltaY: 5)
+        payload.isContinuous = true
+        payload.senderId = 101
+        intake.enqueue(.mouseScroll(payload))
+        intake.enqueue(.mouseScroll(payload))
+        payload.senderId = 202
+        intake.enqueue(.mouseScroll(payload))
+        payload.isContinuous = false
+        intake.enqueue(.mouseScroll(payload))
+        payload.senderId = nil
+        intake.enqueue(.mouseScroll(payload))
+        intake.drainNow()
+        let payloads = sink.received.compactMap { stamped -> MouseScrollIntake? in
+            guard case let .mouseScroll(payload) = stamped.event else { return nil }
+            return payload
+        }
+        XCTAssertEqual(payloads.map(\.deltaY), [10, 5, 5, 5])
+        XCTAssertEqual(payloads.map(\.senderId), [101, 202, 202, nil])
+        XCTAssertEqual(payloads.map(\.isContinuous), [true, true, false, false])
     }
 
     @MainActor

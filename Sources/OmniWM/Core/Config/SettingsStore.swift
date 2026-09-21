@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -167,6 +167,10 @@ final class SettingsStore {
         didSet { scheduleSave() }
     }
 
+    var tabRailAppIcons = SettingsStore.defaultExport.tabRailAppIcons {
+        didSet { scheduleSave() }
+    }
+
     func loadPersistedWindowRestoreCatalog() -> PersistedWindowRestoreCatalog {
         runtimeState.windowRestoreCatalog ?? .empty
     }
@@ -317,6 +321,7 @@ extension SettingsStore {
             focus: focus.export(),
             mouseWarp: pointer.export(),
             routing: monitors.export(),
+            monitorRanking: monitors.ranking,
             gaps: gaps.export(),
             niri: niri.export(),
             workspaceConfigurations: workspaces.configurations,
@@ -344,17 +349,18 @@ extension SettingsStore {
             animationsEnabled: animationsEnabled,
             clipboard: clipboard.export(),
             quakeTerminal: quakeTerminal.export(),
-            appearanceMode: appearanceMode
+            appearanceMode: appearanceMode,
+            tabRailAppIcons: tabRailAppIcons
         )
     }
 
     func applyExport(_ export: SettingsExport) {
         let baseline = SettingsStore.defaultExport
-        let trackpadGesturesWereAvailable = gestures.scrollEnabled || gestures.workspaceSwipeEnabled
+        let trackpadGesturesWereAvailable = gestures.trackpadGesturesEnabled
         isApplyingExport = true
         defer {
             isApplyingExport = false
-            let trackpadGesturesAreAvailable = gestures.scrollEnabled || gestures.workspaceSwipeEnabled
+            let trackpadGesturesAreAvailable = gestures.trackpadGesturesEnabled
             if trackpadGesturesWereAvailable != trackpadGesturesAreAvailable {
                 onTrackpadGestureAvailabilityChanged?(trackpadGesturesAreAvailable)
             }
@@ -367,6 +373,7 @@ extension SettingsStore {
         pointer.constrainToArrangement = export.mouseWarp.constrainToArrangement
         monitors.routingMode = export.routing.mode
         monitors.arrangements = export.routing.arrangements
+        monitors.ranking = MonitorRanking.normalized(export.monitorRanking)
         gaps.apply(export.gaps)
 
         niri.apply(export.niri, baseline: baseline.niri)
@@ -407,6 +414,7 @@ extension SettingsStore {
         quakeTerminal.apply(export.quakeTerminal, baseline: baseline.quakeTerminal)
 
         appearanceMode = export.appearanceMode
+        tabRailAppIcons = export.tabRailAppIcons
     }
 }
 

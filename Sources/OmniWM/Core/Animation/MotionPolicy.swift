@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Observation
 
@@ -12,10 +12,16 @@ struct MotionSnapshot: Equatable, Sendable {
 
 @MainActor @Observable
 final class MotionPolicy {
-    var animationsEnabled: Bool
+    var userAnimationsEnabled: Bool
+    var systemReducesMotion = false
+
+    var animationsEnabled: Bool {
+        get { userAnimationsEnabled && !systemReducesMotion }
+        set { userAnimationsEnabled = newValue }
+    }
 
     init(animationsEnabled: Bool = true) {
-        self.animationsEnabled = animationsEnabled
+        userAnimationsEnabled = animationsEnabled
     }
 
     func snapshot() -> MotionSnapshot {

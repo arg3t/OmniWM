@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -30,7 +30,7 @@ final class OverviewDragCaptureIntegrationTests: XCTestCase {
         try await publish(replacement, in: fixture)
 
         XCTAssertTrue(ghost.preview === replacement)
-        XCTAssertTrue(fixture.capture.previewCache[handle] === replacement)
+        XCTAssertTrue(fixture.capture.preview(for: handle) === replacement)
         XCTAssertEqual(fixture.captureStarts.count, 1)
 
         fixture.overview.drag.cancelDrag()
@@ -65,11 +65,52 @@ final class OverviewDragCaptureIntegrationTests: XCTestCase {
         XCTAssertNil(ghost.preview)
         XCTAssertFalse(ghost.isVisible)
         XCTAssertTrue(fixture.registry.visibleWindows(kind: .dragGhost).isEmpty)
-        XCTAssertNil(fixture.capture.previewCache[handle])
+        XCTAssertNil(fixture.capture.preview(for: handle))
         fixture.driver.streams[0].output.offer(try makeOverviewPreviewFrame())
         XCTAssertNil(fixture.driver.streams[0].output.take())
         XCTAssertNil(ghost.preview)
         XCTAssertEqual(fixture.captureStarts.count, 1)
+    }
+
+    func testReopenSeedsCardsFromPreviousSessionFramesUntilLiveFramesArrive() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.overview.dismiss(animated: false) }
+        fixture.overview.open()
+        await fixture.driver.waitForStarts(1)
+        fixture.driver.completeAllStarts()
+        let handle = try XCTUnwrap(fixture.overview.selectedWindowHandle)
+        let previous = try makeOverviewPreviewFrame()
+        try await publish(previous, in: fixture)
+        fixture.overview.dismiss(animated: false)
+        await fixture.driver.waitForStops(1)
+        XCTAssertTrue(fixture.capture.preview(for: handle) === previous)
+
+        fixture.overview.open()
+
+        let card = try XCTUnwrap(overviewCard(for: handle, in: fixture))
+        XCTAssertTrue(card.preview === previous, "Reopened card must show the previous frame before any stream starts")
+        await fixture.driver.waitForStarts(2)
+        fixture.driver.completeAllStarts()
+        let live = try makeOverviewPreviewFrame()
+        let published = expectation(description: "live frame reached the card")
+        let onPreview = fixture.capture.onPreview
+        fixture.capture.onPreview = { handle, preview in
+            onPreview(handle, preview)
+            if preview === live { published.fulfill() }
+        }
+        fixture.driver.streams[1].output.offer(live)
+        await fulfillment(of: [published], timeout: 1)
+        XCTAssertTrue(card.preview === live)
+        fixture.driver.streams[0].output.offer(try makeOverviewPreviewFrame())
+        XCTAssertNil(fixture.driver.streams[0].output.take())
+        XCTAssertTrue(card.preview === live)
+    }
+
+    private func overviewCard(for handle: WindowHandle, in fixture: Fixture) -> OverviewWindowLayer? {
+        fixture.registry.visibleWindows(kind: .overview)
+            .compactMap { ($0 as? OverviewWindow)?.contentView?.subviews.compactMap { $0 as? OverviewView }.first }
+            .compactMap { $0.layerRenderer.windowLayers[handle] }
+            .first
     }
 
     private func publish(_ frame: OverviewPreviewFrame, in fixture: Fixture) async throws {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -51,7 +51,14 @@ extension AXManager {
             expectedPIDsByWindowId: preservingPIDsByWindowId,
             into: &discoveryEvidence
         )
-        let runningApplications = NSWorkspace.shared.runningApplications
+        var runningApplications = NSWorkspace.shared.runningApplications.compactMap { app in
+            let pid = app.processIdentifier
+            return pid > 0 ? (pid: pid, app: app) : nil
+        }
+        let knownPIDs = discoveryEvidence.pidsWithWindows.union(preservingPIDsByWindowId.values)
+        runningApplications.append(contentsOf: fullRescanRunningApplications(
+            for: knownPIDs.subtracting(runningApplications.map(\.pid))
+        ))
         let appTargets = fullRescanAppTargets(
             runningApplications,
             selection: FullRescanAppTargetSelection(
@@ -65,7 +72,7 @@ extension AXManager {
         )
         let enumerationResults = try await enumerateFullRescanApps(appTargets)
         let coverage = FullRescanEnumerationCoverage(
-            targetPIDs: Set(appTargets.map { $0.app.processIdentifier }),
+            targetPIDs: Set(appTargets.map(\.pid)),
             dependencyPIDs: [],
             targetPIDsByDependencyPID: [:],
             unavailableTargetPIDs: [],
@@ -149,7 +156,7 @@ private struct TargetedFullRescanTraversal {
             requiresTitleForApp: requiresTitleForApp
         )
         appTargets = targetAppTargets
-        attemptedPIDs = Set(targetAppTargets.map { $0.app.processIdentifier })
+        attemptedPIDs = Set(targetAppTargets.map(\.pid))
         unavailableTargetPIDs = resolution.targetPIDs.subtracting(attemptedPIDs)
         results = try await manager.enumerateFullRescanApps(targetAppTargets).map { result in
             let windows = resolution.explicitAppPIDs.contains(result.pid)
@@ -194,7 +201,7 @@ private struct TargetedFullRescanTraversal {
                 manager: manager,
                 requiresTitleForApp: requiresTitleForApp
             )
-            let dependencyTargetPIDs = Set(dependencyTargets.map { $0.app.processIdentifier })
+            let dependencyTargetPIDs = Set(dependencyTargets.map(\.pid))
             unavailableDependencyPIDs.formUnion(
                 pendingDependencyPIDs.subtracting(dependencyTargetPIDs)
             )

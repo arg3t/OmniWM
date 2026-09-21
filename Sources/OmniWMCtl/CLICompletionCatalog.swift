@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 import OmniWMIPC
@@ -94,8 +94,7 @@ enum CLICompletionCatalog {
             guard let first = descriptor.commandWords.first else { continue }
             if descriptor.commandWords.count > 1 {
                 map[first, default: []].insert(descriptor.commandWords[1])
-            }
-            if let literals = literalValues(for: descriptor.arguments.first?.kind) {
+            } else if let literals = literalValues(for: descriptor.arguments.first?.kind) {
                 map[first, default: []].formUnion(literals)
             }
         }
@@ -158,6 +157,22 @@ enum CLICompletionCatalog {
                 (descriptor.name.rawValue, descriptor.fields)
             }
         )
+    }
+
+    static var valueFlags: [String] {
+        let selectors = IPCQuerySelectorName.allCases.filter(\.expectsValue).map(\.flag)
+        let ruleOptions = IPCAutomationManifest.ruleActionDescriptors.flatMap(\.options)
+            .filter { $0.valuePlaceholder != nil }.map(\.flag)
+        return sortedUnique(["--format", "--fields"] + selectors + ruleOptions)
+    }
+
+    static var flagValuesByName: [String: [String]] {
+        var values = ["--format": CLIOutputFormat.allCases.map(\.rawValue)]
+        for option in IPCAutomationManifest.ruleDefinitionOptionDescriptors {
+            guard let placeholder = option.valuePlaceholder, placeholder.contains("|") else { continue }
+            values[option.flag] = placeholder.dropFirst().dropLast().split(separator: "|").map(String.init)
+        }
+        return values
     }
 
     private static func selectorFlags(for descriptor: IPCQueryDescriptor) -> [String] {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Carbon
 import SwiftUI
@@ -141,6 +141,7 @@ struct HotkeySettingsView: View {
     @Bindable var controller: WMController
     @State private var recordingTarget: HotkeyRecordingTarget?
     @State private var conflictAlert: ConflictAlert?
+    @State private var hyperTriggerError: String?
     @State private var searchText: String = ""
     @State private var showsAdvancedHotkeys = false
     @State private var confirmsResetToDefaults = false
@@ -154,13 +155,14 @@ struct HotkeySettingsView: View {
         ) {
             Section("Controls") {
                 LabeledContent("System Hyper Trigger") {
-                    Picker("System Hyper Trigger", selection: $settings.systemHyperTrigger) {
+                    Picker("System Hyper Trigger", selection: systemHyperTriggerBinding) {
                         Text("None").tag(SystemHyperTrigger.none)
                         ForEach(SystemHyperTrigger.selectableKeyCodes, id: \.self) { code in
                             Text(KeySymbolMapper.keyName(code)).tag(SystemHyperTrigger.key(code))
                         }
                         ForEach(SystemHyperTrigger.selectableMouseButtons, id: \.self) { button in
                             Text("Mouse Button \(button)").tag(SystemHyperTrigger.mouseButton(button))
+                                .disabled(settings.overview.mouseButton == button)
                         }
                     }
                     .labelsHidden()
@@ -170,6 +172,9 @@ struct HotkeySettingsView: View {
                     }
                     .accessibilityLabel("System Hyper trigger")
                     .accessibilityValue(settings.systemHyperTrigger.humanReadableString)
+                }
+                if let hyperTriggerError {
+                    SettingsCaption(hyperTriggerError)
                 }
                 if let triggerFailure = controller.systemHyperTriggerFailure {
                     SettingsCaption(systemHyperTriggerFailureMessage(triggerFailure))
@@ -456,6 +461,22 @@ struct HotkeySettingsView: View {
     }
 }
 
+extension HotkeySettingsView {
+    private var systemHyperTriggerBinding: Binding<SystemHyperTrigger> {
+        Binding(
+            get: { settings.systemHyperTrigger },
+            set: { trigger in
+                do {
+                    try settings.setSystemHyperTrigger(trigger)
+                    hyperTriggerError = nil
+                } catch {
+                    hyperTriggerError = error.localizedDescription
+                }
+            }
+        )
+    }
+}
+
 struct ConflictAlert: Identifiable {
     let targetActionId: String
     let newTrigger: HotkeyTrigger
@@ -472,9 +493,8 @@ struct ConflictAlert: Identifiable {
     var message: String {
         if conflictingCommands.count == 1 {
             return "This key combination is already used by \"\(conflictingCommands[0])\". Do you want to replace it?"
-        } else {
-            let commandList = conflictingCommands.joined(separator: ", ")
-            return "This key combination is used by: \(commandList). Do you want to replace all?"
         }
+        let commandList = conflictingCommands.joined(separator: ", ")
+        return "This key combination is used by: \(commandList). Do you want to replace all?"
     }
 }

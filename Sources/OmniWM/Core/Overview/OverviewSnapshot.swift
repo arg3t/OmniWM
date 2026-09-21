@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -14,7 +14,7 @@ final class OverviewSnapshot {
     private(set) var workspaces: [OverviewWorkspaceLayoutItem] = []
     private(set) var windows: [WindowHandle: OverviewWindowLayoutData] = [:]
     private(set) var niriSnapshotsByWorkspace: [WorkspaceDescriptor.ID: NiriOverviewWorkspaceSnapshot] = [:]
-    private(set) var groupCountByHandle: [WindowHandle: Int] = [:]
+    private(set) var dwindleGroupsByWorkspace: [WorkspaceDescriptor.ID: [OverviewDwindleGroup]] = [:]
 
     init(wmController: WMController, facts: OverviewWindowFacts) {
         self.wmController = wmController
@@ -29,20 +29,21 @@ final class OverviewSnapshot {
         workspaces = []
         windows = [:]
         niriSnapshotsByWorkspace = [:]
-        groupCountByHandle = [:]
+        dwindleGroupsByWorkspace = [:]
     }
 
     func remove(_ handle: WindowHandle) -> OverviewWindowLayoutData? {
         windows.removeValue(forKey: handle)
     }
 
-    func refresh(affectedWorkspaceIds: Set<WorkspaceDescriptor.ID>) {
+    func refresh(affectedWorkspaceIds: Set<WorkspaceDescriptor.ID>, settledNiriFrames: Bool = false) {
         guard let wmController else { return }
         let workspaceManager = wmController.workspaceManager
         refreshWorkspaces(affectedWorkspaceIds: affectedWorkspaceIds, workspaceManager: workspaceManager)
         let projections = refreshEngineProjections(
             affectedWorkspaceIds: affectedWorkspaceIds,
-            wmController: wmController
+            wmController: wmController,
+            settledNiriFrames: settledNiriFrames
         )
         refreshCachedWindows(engineFrames: projections.frames)
         for workspaceId in projections.niriWorkspaceIds {
@@ -58,10 +59,6 @@ final class OverviewSnapshot {
                 workspaceId: workspaceId
             )
         }
-
-        groupCountByHandle = groupCountByHandle.filter {
-            windows[$0.key] != nil
-        }
     }
 
     private func refreshWorkspaces(
@@ -76,17 +73,17 @@ final class OverviewSnapshot {
                 workspaces.append(OverviewWorkspaceLayoutItem(
                     id: workspace.id,
                     name: wmController.settings.workspaces.displayName(for: workspace.name),
-                    isActive: workspace.id == activeWorkspaceId
+                    isActive: workspace.id == activeWorkspaceId,
+                    displayId: monitor.displayId
                 ))
             }
         }
         self.workspaces = workspaces
 
-        let staleGroupHandles = groupCountByHandle.keys.filter { handle in
-            windows[handle].map { affectedWorkspaceIds.contains($0.workspaceId) } == true
-        }
-        for handle in staleGroupHandles {
-            groupCountByHandle.removeValue(forKey: handle)
+        let workspaceIds = Set(workspaces.map(\.id))
+        dwindleGroupsByWorkspace = dwindleGroupsByWorkspace.filter {
+            workspaceIds.contains($0.key) && !affectedWorkspaceIds.contains($0.key)
+                && workspaceManager.activeLayoutKind(for: $0.key) == .dwindle
         }
     }
 
@@ -98,7 +95,8 @@ final class OverviewSnapshot {
 
     private func refreshEngineProjections(
         affectedWorkspaceIds: Set<WorkspaceDescriptor.ID>,
-        wmController: WMController
+        wmController: WMController,
+        settledNiriFrames: Bool
     ) -> EngineProjections {
         let workspaceManager = wmController.workspaceManager
         var engineFrames: [WindowToken: CGRect] = [:]
@@ -108,10 +106,12 @@ final class OverviewSnapshot {
             switch workspaceManager.activeLayoutKind(for: workspaceId) {
             case .niri:
                 niriWorkspaceIds.insert(workspaceId)
-                if let frames = wmController.niriEngine?.captureWindowFrames(in: workspaceId) {
+                let frames = (settledNiriFrames ? wmController.niriLayoutHandler.settledFrames(in: workspaceId) : nil)
+                    ?? wmController.niriEngine?.captureWindowFrames(in: workspaceId)
+                if let frames {
                     engineFrames.merge(frames) { _, new in new }
                 }
-                if let snapshot = wmController.niriEngine?.overviewSnapshot(for: workspaceId),
+                if let snapshot = wmController.niriLayoutHandler.overviewSnapshot(for: workspaceId),
                    let filteredSnapshot = facts.cachedNiriSnapshot(snapshot)
                 {
                     niriSnapshotsByWorkspace[workspaceId] = filteredSnapshot
@@ -146,20 +146,23 @@ final class OverviewSnapshot {
                 continue
             }
             let frame = engineFrames[entry.token] ?? data.frame
-            if entry.token != data.token || entry.workspaceId != data.workspaceId || frame != data.frame {
+            if entry.token != data.token || entry.workspaceId != data.workspaceId || frame != data.frame || data
+                .floatingPreviewFrame != facts.floatingPreviewFrame(for: entry)
+            {
                 windows[handle] = OverviewWindowLayoutData(
                     token: entry.token,
                     workspaceId: entry.workspaceId,
                     title: data.title,
                     appName: data.appName,
                     appIcon: data.appIcon,
-                    frame: frame
+                    frame: frame,
+                    isNativeFullscreen: data.isNativeFullscreen,
+                    floatingPreviewFrame: facts.floatingPreviewFrame(for: entry)
                 )
             }
         }
         for handle in staleHandles {
             windows.removeValue(forKey: handle)
-            groupCountByHandle.removeValue(forKey: handle)
         }
     }
 
@@ -169,7 +172,7 @@ final class OverviewSnapshot {
 
         var workspaces: [OverviewWorkspaceLayoutItem] = []
         var windowData: [WindowHandle: OverviewWindowLayoutData] = [:]
-        var groupCountByHandle: [WindowHandle: Int] = [:]
+        var dwindleGroupsByWorkspace: [WorkspaceDescriptor.ID: [OverviewDwindleGroup]] = [:]
 
         for monitor in workspaceManager.monitors {
             let activeWs = workspaceManager.activeWorkspace(on: monitor.id)
@@ -178,7 +181,8 @@ final class OverviewSnapshot {
                 workspaces.append(OverviewWorkspaceLayoutItem(
                     id: ws.id,
                     name: wmController.settings.workspaces.displayName(for: ws.name),
-                    isActive: ws.id == activeWs?.id
+                    isActive: ws.id == activeWs?.id,
+                    displayId: monitor.displayId
                 ))
 
                 let dwindleProjection = dwindleOverviewProjection(for: ws.id)
@@ -199,21 +203,37 @@ final class OverviewSnapshot {
                         preferredFrame: dwindleProjection?.frames[entry.token] ?? stackFrames?[entry.token],
                         appInfoCache: wmController.appInfoCache
                     )
-                    if let count = dwindleProjection?.groupCountByToken[entry.token], count > 1 {
-                        groupCountByHandle[handle] = count
-                    }
+                }
+                if let dwindleProjection, !dwindleProjection.groups.isEmpty {
+                    dwindleGroupsByWorkspace[ws.id] = overviewGroups(
+                        dwindleProjection,
+                        workspaceManager: workspaceManager
+                    )
                 }
             }
         }
 
         self.workspaces = workspaces
         windows = windowData
-        self.groupCountByHandle = groupCountByHandle
+        self.dwindleGroupsByWorkspace = dwindleGroupsByWorkspace
         niriSnapshotsByWorkspace = buildNiriOverviewSnapshots()
     }
 }
 
 extension OverviewSnapshot {
+    private func overviewGroups(
+        _ projection: DwindleOverviewWorkspaceProjection,
+        workspaceManager: WorkspaceManager
+    ) -> [OverviewDwindleGroup] {
+        projection.groups.compactMap { group in
+            let handles = group.tokens.compactMap { workspaceManager.handle(for: $0) }
+            guard handles.count > 1, let activeHandle = handles.first(where: { $0.id == group.activeToken }) else {
+                return nil
+            }
+            return OverviewDwindleGroup(id: group.id, windowHandles: handles, activeHandle: activeHandle)
+        }
+    }
+
     private func dwindleOverviewProjection(
         for workspaceId: WorkspaceDescriptor.ID
     ) -> DwindleOverviewWorkspaceProjection? {
@@ -257,14 +277,18 @@ extension OverviewSnapshot {
                 ?? facts.windowFrame(entry)
                 ?? .zero
             if let data = windows[handle] {
-                if data.token != entry.token || data.workspaceId != workspaceId || data.frame != frame {
+                if data.token != entry.token || data.workspaceId != workspaceId || data.frame != frame || data
+                    .floatingPreviewFrame != facts.floatingPreviewFrame(for: entry)
+                {
                     windows[handle] = OverviewWindowLayoutData(
                         token: entry.token,
                         workspaceId: workspaceId,
                         title: data.title,
                         appName: data.appName,
                         appIcon: data.appIcon,
-                        frame: frame
+                        frame: frame,
+                        isNativeFullscreen: data.isNativeFullscreen,
+                        floatingPreviewFrame: facts.floatingPreviewFrame(for: entry)
                     )
                 }
             } else {
@@ -274,10 +298,10 @@ extension OverviewSnapshot {
                     appInfoCache: wmController.appInfoCache
                 )
             }
+        }
 
-            if let count = projection.groupCountByToken[entry.token], count > 1 {
-                groupCountByHandle[handle] = count
-            }
+        if !projection.groups.isEmpty {
+            dwindleGroupsByWorkspace[workspaceId] = overviewGroups(projection, workspaceManager: workspaceManager)
         }
 
         let staleHandles = windows.compactMap { handle, data in
@@ -285,7 +309,6 @@ extension OverviewSnapshot {
         }
         for handle in staleHandles {
             windows.removeValue(forKey: handle)
-            groupCountByHandle.removeValue(forKey: handle)
         }
     }
 
@@ -310,14 +333,18 @@ extension OverviewSnapshot {
                 ?? facts.windowFrame(entry)
                 ?? .zero
             if let data = windows[handle] {
-                if data.token != entry.token || data.workspaceId != workspaceId || data.frame != frame {
+                if data.token != entry.token || data.workspaceId != workspaceId || data.frame != frame || data
+                    .floatingPreviewFrame != facts.floatingPreviewFrame(for: entry)
+                {
                     windows[handle] = OverviewWindowLayoutData(
                         token: entry.token,
                         workspaceId: workspaceId,
                         title: data.title,
                         appName: data.appName,
                         appIcon: data.appIcon,
-                        frame: frame
+                        frame: frame,
+                        isNativeFullscreen: data.isNativeFullscreen,
+                        floatingPreviewFrame: facts.floatingPreviewFrame(for: entry)
                     )
                 }
             } else {
@@ -334,19 +361,18 @@ extension OverviewSnapshot {
         }
         for handle in staleHandles {
             windows.removeValue(forKey: handle)
-            groupCountByHandle.removeValue(forKey: handle)
         }
     }
 
     private func buildNiriOverviewSnapshots() -> [WorkspaceDescriptor.ID: NiriOverviewWorkspaceSnapshot] {
-        guard let engine = wmController?.niriEngine else { return [:] }
+        guard let wmController, wmController.niriEngine != nil else { return [:] }
 
         var snapshots: [WorkspaceDescriptor.ID: NiriOverviewWorkspaceSnapshot] = [:]
         snapshots.reserveCapacity(workspaces.count)
 
         for workspace in workspaces {
             guard facts.isNiriLayout(workspaceId: workspace.id),
-                  let snapshot = engine.overviewSnapshot(for: workspace.id),
+                  let snapshot = wmController.niriLayoutHandler.overviewSnapshot(for: workspace.id),
                   let filteredSnapshot = facts.cachedNiriSnapshot(snapshot)
             else {
                 continue

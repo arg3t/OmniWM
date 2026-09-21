@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 import OmniWMIPC
 
-enum CLIOutputFormat: String, Equatable {
+enum CLIOutputFormat: String, CaseIterable, Equatable {
     case json
     case ndjson
     case table
@@ -44,4 +44,5 @@ enum CLIShell: String, CaseIterable, Equatable {
     case zsh
     case bash
     case fish
+    case nu
 }

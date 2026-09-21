@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import IOSurface
@@ -17,8 +17,9 @@ final class OverviewDragPreviewTests: XCTestCase {
         )
         defer { ghost.destroy() }
 
-        XCTAssertEqual(ghost.frame.size, CGSize(width: 400, height: 300))
-        XCTAssertEqual(ghost.alphaValue, 0.5)
+        XCTAssertEqual(ghost.frame.size, CGSize(width: 400, height: 332))
+        XCTAssertEqual(ghost.alphaValue, 1)
+        XCTAssertEqual(ghost.thumbnail.opacity, 0.5)
         XCTAssertGreaterThan(ghost.level.rawValue, NSWindow.Level.screenSaver.rawValue)
         XCTAssertFalse(ghost.canBecomeKey)
         XCTAssertFalse(ghost.canBecomeMain)
@@ -29,9 +30,9 @@ final class OverviewDragPreviewTests: XCTestCase {
         XCTAssertNil(ghost.thumbnail.contents)
 
         ghost.moveTo(cursorLocation: CGPoint(x: 1200, y: 700))
-        XCTAssertEqual(ghost.frame, CGRect(x: 1210, y: 390, width: 400, height: 300))
+        XCTAssertEqual(ghost.frame, CGRect(x: 1210, y: 358, width: 400, height: 332))
         ghost.moveTo(cursorLocation: CGPoint(x: -900, y: 400))
-        XCTAssertEqual(ghost.frame, CGRect(x: -890, y: 90, width: 400, height: 300))
+        XCTAssertEqual(ghost.frame, CGRect(x: -890, y: 58, width: 400, height: 332))
     }
 
     func testGhostUsesLiveSurfaceCropAndRefitsEachPreviewWithoutChangingPanelSize() throws {
@@ -51,7 +52,7 @@ final class OverviewDragPreviewTests: XCTestCase {
         XCTAssertTrue(ghost.preview === cropped)
         XCTAssertTrue((ghost.thumbnail.contents as? IOSurface) === cropped.surface)
         XCTAssertEqual(ghost.thumbnail.contentsRect, CGRect(x: 0.125, y: 0.1, width: 0.5, height: 0.5))
-        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 0, y: 50, width: 400, height: 200))
+        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 0, y: 82, width: 400, height: 200))
 
         let portrait = try makeOverviewPreviewFrame(width: 100, height: 200)
         ghost.updatePreview(portrait)
@@ -59,14 +60,33 @@ final class OverviewDragPreviewTests: XCTestCase {
 
         XCTAssertTrue(ghost.preview === portrait)
         XCTAssertTrue((ghost.thumbnail.contents as? IOSurface) === portrait.surface)
-        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 125, y: 0, width: 150, height: 300))
-        XCTAssertEqual(ghost.frame.size, CGSize(width: 400, height: 300))
+        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 125, y: 32, width: 150, height: 300))
+        XCTAssertEqual(ghost.frame.size, CGSize(width: 400, height: 332))
         XCTAssertNil(ghost.thumbnail.animationKeys())
 
         ghost.updatePreview(nil)
         XCTAssertNil(ghost.preview)
         XCTAssertNil(ghost.thumbnail.contents)
-        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 0, y: 0, width: 400, height: 300))
+        XCTAssertEqual(ghost.thumbnail.frame, CGRect(x: 0, y: 32, width: 400, height: 300))
+    }
+
+    func testFeedbackStaysReadableAndGhostStaysOnPointerDisplay() throws {
+        let registry = OwnedWindowRegistry(surfaceCoordinator: SurfaceCoordinator())
+        let ghost = OverviewDragGhost(
+            originalFrame: CGRect(x: 0, y: 0, width: 300, height: 200), ownedWindowRegistry: registry
+        )
+        defer { ghost.destroy() }
+        let label = try XCTUnwrap(ghost.contentView?.layer?.sublayers?.compactMap { $0 as? CATextLayer }.first)
+        ghost.updateFeedback("New column", isValid: true)
+        XCTAssertEqual(label.string as? String, "New column")
+        XCTAssertEqual(label.foregroundColor, OverviewRenderStyle.Colors.textWhite)
+        ghost.updateFeedback("Can’t drop here", isValid: false)
+        XCTAssertEqual(label.string as? String, "Can’t drop here")
+        XCTAssertEqual(label.foregroundColor, NSColor.systemRed.cgColor)
+        for screen in NSScreen.screens {
+            ghost.moveTo(cursorLocation: CGPoint(x: screen.frame.maxX - 1, y: screen.frame.minY + 1))
+            XCTAssertTrue(screen.frame.contains(ghost.frame))
+        }
     }
 
     func testReplacedPreviewRemainsPinnedUntilLayerTransactionCompletes() async throws {

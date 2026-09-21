@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -219,6 +219,7 @@ extension AXEventHandler {
         case .focusedWindowChanged:
             return true
         case .workspaceDidActivateApplication,
+             .workspaceDidUnhideApplication,
              .cgsFrontAppChanged:
             return origin == .external || origin == .appTerminationProbe
         }

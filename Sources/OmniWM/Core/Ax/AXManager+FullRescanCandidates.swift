@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -12,10 +12,10 @@ extension AXManager {
         preservingPIDsByWindowId: [Int: pid_t]
     ) async throws -> FullRescanEnumerationSnapshot {
         let activationPolicyByPID = Dictionary(
-            uniqueKeysWithValues: enumeration.appTargets.map { ($0.app.processIdentifier, $0.app.activationPolicy) }
+            uniqueKeysWithValues: enumeration.appTargets.map { ($0.pid, $0.app.activationPolicy) }
         )
         let appsByPID = Dictionary(
-            uniqueKeysWithValues: enumeration.appTargets.map { ($0.app.processIdentifier, $0.app) }
+            uniqueKeysWithValues: enumeration.appTargets.map { ($0.pid, $0.app) }
         )
         try Task.checkCancellation()
         let initialCollection = collectFullRescanCandidates(
@@ -148,7 +148,7 @@ extension AXManager {
             let hadContext = AppAXContextRegistry.contexts[pid] != nil
             var callbackGeneration: UInt64?
             do {
-                guard let context = try await AppAXContextRegistry.getOrCreate(app) else {
+                guard let context = try await AppAXContextRegistry.getOrCreate(app, pid: pid) else {
                     failedPIDs.insert(pid)
                     if !hadContext {
                         destroyContextIfPresent(for: pid, reason: "promotion-failed")
@@ -168,6 +168,7 @@ extension AXManager {
                 }
                 Self.recordFullRescanEnumerationFailure(
                     app,
+                    pid: pid,
                     reason: "promotion_\(error)",
                     callbackGeneration: callbackGeneration
                 )

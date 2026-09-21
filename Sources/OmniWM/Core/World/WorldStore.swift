@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -488,7 +488,7 @@ extension WorldStore {
     }
 
     @discardableResult
-    func setObservedMinSize(_ size: CGSize, for token: WindowToken) -> Bool {
-        model.setObservedMinSize(size, for: token)
+    func setObservedSizeEvidence(_ evidence: ObservedSizeEvidence, for token: WindowToken) -> Bool {
+        model.setObservedSizeEvidence(evidence, for: token)
     }
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -266,6 +266,8 @@ extension WMController {
             "animationsEnabled=\(settings.animationsEnabled)",
             "scrollGestureEnabled=\(settings.gestures.scrollEnabled)",
             "workspaceSwipeEnabled=\(settings.gestures.workspaceSwipeEnabled)",
+            "windowMoveEnabled=\(settings.gestures.windowMoveEnabled)",
+            "windowResizeEnabled=\(settings.gestures.windowResizeEnabled)",
             "mouseWarpEnabled=\(settings.pointer.enabled)",
             "bordersEnabled=\(settings.borders.enabled)",
             "workspaceBarEnabled=\(settings.workspaceBar.enabled)",

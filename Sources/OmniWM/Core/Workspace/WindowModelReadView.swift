@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -128,8 +128,8 @@ extension WindowModel {
             model.cachedConstraints(for: token, maxAge: maxAge)
         }
 
-        func observedMinSize(for token: WindowToken) -> CGSize? {
-            model.observedMinSize(for: token)
+        func observedSizeEvidence(for token: WindowToken) -> ObservedSizeEvidence? {
+            model.observedSizeEvidence(for: token)
         }
     }
 }

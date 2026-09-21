@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreGraphics
@@ -7,12 +7,35 @@ import QuartzCore
 
 struct OverviewRenderState {
     let searchQuery: String
-    let selectedWindowHandle: WindowHandle?
+    let selection: OverviewSelection?
+    var selectedWindowHandle: WindowHandle? {
+        selection?.windowHandle
+    }
+
     let hoveredWindowHandle: WindowHandle?
     let closeButtonHovered: Bool
     let progress: Double
     let bounds: CGRect
     let palette: OverviewRenderPalette
+
+    init(
+        searchQuery: String,
+        selectedWindowHandle: WindowHandle?,
+        hoveredWindowHandle: WindowHandle?,
+        closeButtonHovered: Bool,
+        progress: Double,
+        bounds: CGRect,
+        palette: OverviewRenderPalette,
+        selection: OverviewSelection? = nil
+    ) {
+        self.searchQuery = searchQuery
+        self.selection = selection ?? selectedWindowHandle.map(OverviewSelection.window)
+        self.hoveredWindowHandle = hoveredWindowHandle
+        self.closeButtonHovered = closeButtonHovered
+        self.progress = progress
+        self.bounds = bounds
+        self.palette = palette
+    }
 }
 
 enum OverviewRenderer {

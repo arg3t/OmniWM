@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -8,15 +8,21 @@ extension NiriLayoutEngine {
     func updateWindowConstraints(
         for token: WindowToken,
         constraints: WindowSizeConstraints,
+        packingHints: ObservedPackingHints = .none,
         in workspaceId: WorkspaceDescriptor.ID,
         motion: MotionSnapshot
     ) {
         assertSanctionedMutation()
         guard let node = states[workspaceId]?.nodesByToken[token] else { return }
         let normalized = constraints.normalized()
+        let column = node.parent as? NiriContainer
+        if node.packingHints != packingHints {
+            node.packingHints = packingHints
+            column?.invalidateCachedPrimarySpans()
+        }
         guard node.constraints != normalized else { return }
         node.constraints = normalized
-        guard let column = node.parent as? NiriContainer else { return }
+        guard let column else { return }
         if column.cachedHeight > 0 {
             column.cachedHeight = column.clampedToHeightBounds(column.cachedHeight)
         }
@@ -111,6 +117,7 @@ extension NiriLayoutEngine {
         guard let state = states[workspaceId],
               let node = state.nodesByToken[token],
               let column = node.parent as? NiriContainer else { return }
+        let wasSingleWindow = singleWindowLayoutContext(in: workspaceId) != nil
 
         cancelInteractions(for: Set([node.id]), in: workspaceId)
         column.adjustActiveTileIdxForRemoval(of: node)
@@ -137,6 +144,18 @@ extension NiriLayoutEngine {
                 }
             }
         }
+
+        clearManualSpanOverridesOnSingleWindowEntry(in: workspaceId, wasSingleWindow: wasSingleWindow)
+    }
+
+    func clearManualSpanOverridesOnSingleWindowEntry(
+        in workspaceId: WorkspaceDescriptor.ID,
+        wasSingleWindow: Bool
+    ) {
+        guard !wasSingleWindow,
+              let survivor = singleWindowLayoutContext(in: workspaceId)?.container else { return }
+        survivor.hasManualSingleWindowWidthOverride = false
+        survivor.hasManualSingleWindowHeightOverride = false
     }
 
     @discardableResult

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Carbon
@@ -39,23 +39,23 @@ final class OverviewInputHandler {
     private weak var controller: OverviewController?
     private let projection: OverviewViewportProjection
     private let windowSession: OverviewWindowSession
-    private let focusSession: OverviewFocusSession
     private let overviewSnapshot: OverviewSnapshot
     private var state: OverviewState {
         controller?.state ?? .closed
     }
 
-    var searchQuery: String = ""
+    var searchQuery: String {
+        get { projection.searchQuery }
+        set { projection.searchQuery = newValue }
+    }
 
     init(
         projection: OverviewViewportProjection,
         windowSession: OverviewWindowSession,
-        focusSession: OverviewFocusSession,
         snapshot: OverviewSnapshot
     ) {
         self.projection = projection
         self.windowSession = windowSession
-        self.focusSession = focusSession
         overviewSnapshot = snapshot
     }
 
@@ -63,13 +63,14 @@ final class OverviewInputHandler {
         self.controller = controller
     }
 
-    private func updateWindowDisplays() {
-        windowSession.updateWindowDisplays(state: state)
+    private func updateWindowDisplays(update: OverviewLayoutUpdate = .preserve, on monitorId: Monitor.ID? = nil) {
+        windowSession.updateWindowDisplays(state: state, update: update, on: monitorId)
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
         guard let controller else { return false }
         guard controller.state.isOpen else { return false }
+        guard !windowSession.isTabPickerOpen else { return false }
 
         let result = Self.keyHandlingResult(
             keyCode: event.keyCode,
@@ -171,14 +172,16 @@ final class OverviewInputHandler {
             guard !isRepeat else { return .init(action: .consume, shouldConsume: true) }
             return .init(action: .closeSelection, shouldConsume: true)
         default:
-            if relevantModifiers.isDisjoint(with: [.command, .control, .option]),
-               let charactersIgnoringModifiers,
-               let character = charactersIgnoringModifiers.first,
-               charactersIgnoringModifiers.count == 1,
-               character.isLetter || character.isNumber || character == " "
-            {
-                return .init(action: .appendToSearch(String(character)), shouldConsume: true)
-            }
+            break
+        }
+
+        if relevantModifiers.isDisjoint(with: [.command, .control, .option]),
+           let charactersIgnoringModifiers,
+           let character = charactersIgnoringModifiers.first,
+           charactersIgnoringModifiers.count == 1,
+           character.isLetter || character.isNumber || character == " "
+        {
+            return .init(action: .appendToSearch(String(character)), shouldConsume: true)
         }
 
         return .init(action: .consume, shouldConsume: true)
@@ -202,6 +205,7 @@ final class OverviewInputHandler {
 extension OverviewInputHandler {
     func handleHotkeyInvocation(_ invocation: HotkeyInvocation) -> OverviewHotkeyDisposition {
         guard state.isOpen else { return .inactive }
+        guard !windowSession.isTabPickerOpen else { return .blocked }
         if let trigger = invocation.trigger,
            let action = Self.physicalHotkeyAction(for: trigger)
         {
@@ -209,6 +213,12 @@ extension OverviewInputHandler {
             switch action {
             case .dismissSelection:
                 dismissToSelection(animated: true)
+            case .activateSelection:
+                if case .opening = state {
+                    dismissToSelection(animated: true)
+                } else {
+                    activateSelectedWindow()
+                }
             case .closeSelection:
                 closeSelectedWindow()
             }
@@ -225,7 +235,7 @@ extension OverviewInputHandler {
             return .dismissSelection
         case UInt32(kVK_Return),
              UInt32(kVK_ANSI_KeypadEnter):
-            return relevantModifiers == 0 ? .dismissSelection : nil
+            return relevantModifiers == 0 ? .activateSelection : nil
         case UInt32(kVK_ANSI_W):
             return relevantModifiers == UInt32(cmdKey) ? .closeSelection : nil
         default:
@@ -235,6 +245,7 @@ extension OverviewInputHandler {
 
     func handleHotkeyCommand(_ command: HotkeyCommand) -> OverviewHotkeyDisposition {
         guard state.isOpen else { return .inactive }
+        guard !windowSession.isTabPickerOpen else { return .blocked }
 
         switch command {
         case .presentation(.overview):
@@ -258,58 +269,91 @@ extension OverviewInputHandler {
         }
     }
 
+    func selectTab(_ handle: WindowHandle, on monitorId: Monitor.ID) {
+        guard case .open = state, controller?.hasActiveDragSession == false,
+              projection.layoutsByMonitor[monitorId]?.window(for: handle)?.matchesSearch == true
+        else { return }
+        projection.activeInteractionMonitorId = monitorId
+        projection.setSelectedWindowHandle(handle)
+        projection.revealSelectedWindow(on: monitorId)
+        updateWindowDisplays()
+    }
+
+    func panStrip(at point: CGPoint, by delta: CGFloat, on monitorId: Monitor.ID) {
+        guard case .open = state, controller?.hasActiveDragSession == false,
+              let section = projection.layoutsByMonitor[monitorId]?.ribbonSection(at: point)
+        else { return }
+        projection.panStrip(section.workspaceId, by: delta, on: monitorId)
+        updateWindowDisplays(update: .immediate, on: monitorId)
+    }
+
     func selectAndActivateWindow(_ handle: WindowHandle) {
         guard case .open = state else { return }
         projection.setSelectedWindowHandle(handle)
-        updateWindowDisplays()
-
-        focusSession.scheduleSelectionDismissal(handle)
+        controller?.dismiss(reason: .selection, targetWindow: handle, animated: true)
     }
 
     func updateSearchQuery(_ query: String) {
-        projection.searchQuery = query
         searchQuery = query
-        projection.rebuildProjectedLayouts()
+        projection.rebuildProjectedLayouts(revealingSelection: false)
         updateWindowDisplays()
     }
 
     func navigateSelection(_ direction: Direction, on monitorId: Monitor.ID? = nil) {
         guard case .open = state else { return }
-        let changed = projection.performSelectionNavigation(on: monitorId) { layout, currentHandle in
-            OverviewNavigation.findNextWindow(
+        let result = projection.performSelectionNavigation(on: monitorId) { layout, selection in
+            OverviewNavigation.nextSelection(
                 in: layout,
-                from: currentHandle,
-                direction: direction
+                from: selection,
+                direction: direction,
+                searching: !searchQuery.isEmpty
             )
         }
-        if changed { updateWindowDisplays() }
+        if result.changed {
+            updateWindowDisplays(
+                update: result.revealed ? .viewport : .preserve,
+                on: projection.activeInteractionMonitorId
+            )
+        }
     }
 
     func cycleSelection(forward: Bool, on monitorId: Monitor.ID? = nil) {
         guard case .open = state else { return }
-        let changed = projection.performSelectionNavigation(on: monitorId) { layout, currentHandle in
-            OverviewNavigation.findCycledWindow(
+        let result = projection.performSelectionNavigation(on: monitorId) { layout, selection in
+            OverviewNavigation.cycledSelection(
                 in: layout,
-                from: currentHandle,
-                forward: forward
+                from: selection,
+                forward: forward,
+                searching: !searchQuery.isEmpty
             )
         }
-        if changed { updateWindowDisplays() }
+        if result.changed {
+            updateWindowDisplays(
+                update: result.revealed ? .viewport : .preserve,
+                on: projection.activeInteractionMonitorId
+            )
+        }
     }
 
     func activateSelectedWindow() {
-        guard let selectedWindowHandle = projection.selectedWindowHandle else { return }
-        selectAndActivateWindow(selectedWindowHandle)
+        guard case .open = state, let selection = projection.selection else { return }
+        switch selection {
+        case let .window(handle): selectAndActivateWindow(handle)
+        case let .workspace(id): controller?.activateWorkspace(id)
+        case let .newWorkspace(id): controller?.createWorkspace(on: id)
+        }
+    }
+
+    func selectionDismissal() -> (reason: OverviewController.OverviewDismissReason, targetWindow: WindowHandle?) {
+        guard let selectedWindowHandle = projection.selectedWindowHandle,
+              overviewSnapshot.windows[selectedWindowHandle] != nil
+        else { return (.cancel, nil) }
+        return (.selection, selectedWindowHandle)
     }
 
     func dismissToSelection(animated: Bool) {
-        guard let selectedWindowHandle = projection.selectedWindowHandle,
-              overviewSnapshot.windows[selectedWindowHandle] != nil
-        else {
-            controller?.dismiss(reason: .cancel, animated: animated)
-            return
-        }
-        controller?.dismiss(reason: .selection, targetWindow: selectedWindowHandle, animated: animated)
+        let dismissal = selectionDismissal()
+        controller?.dismiss(reason: dismissal.reason, targetWindow: dismissal.targetWindow, animated: animated)
     }
 
     func closeSelectedWindow() {
@@ -319,12 +363,21 @@ extension OverviewInputHandler {
 
     func adjustScrollOffset(by delta: CGFloat, on monitorId: Monitor.ID) {
         projection.adjustScrollOffset(by: delta, on: monitorId)
-        updateWindowDisplays()
+        updateWindowDisplays(update: .immediate, on: monitorId)
     }
 
-    func handleScroll(delta: CGFloat, modifiers: NSEvent.ModifierFlags, isPrecise: Bool, on monitorId: Monitor.ID) {
-        if projection.handleScroll(delta: delta, modifiers: modifiers, isPrecise: isPrecise, on: monitorId) {
-            updateWindowDisplays()
+    func handleScroll(_ event: OverviewScrollInput.Event, on monitorId: Monitor.ID) {
+        let zoom = event.modifiers.contains([.option, .shift])
+        let immediate = event.isPrecise || zoom
+        if projection.handleScroll(event, on: monitorId) || immediate {
+            updateWindowDisplays(update: immediate ? .immediate : .viewport, on: zoom ? nil : monitorId)
+        }
+    }
+
+    func pageStrip(_ pill: OverviewOverflowPill, on monitorId: Monitor.ID) {
+        guard case .open = state else { return }
+        if projection.pageStrip(pill, on: monitorId) {
+            updateWindowDisplays(update: .viewport, on: monitorId)
         }
     }
 }

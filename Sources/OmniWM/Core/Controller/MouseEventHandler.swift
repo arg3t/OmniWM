@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -36,6 +36,9 @@ final class MouseEventHandler {
         source.onSnapshot = { [weak self] snapshot in
             self?.receiveTapGestureEvent(snapshot)
         }
+        source.onContactSessions = { [weak self] contacts in
+            self?.updateContactSessions(contacts)
+        }
         source.onSourceWillReplace = { [weak self] in
             self?.resetForMultitouchSourceReplacement()
         }
@@ -56,6 +59,7 @@ final class MouseEventHandler {
         clearNativeTitleBarDrag()
         cancelActiveMouseInteraction()
         state.capturedInteractionButton = nil
+        state.capturedOverviewButton = nil
         tearDownEventTaps()
         let retiringMultitouchSource = multitouchSource
         if retiringMultitouchSource?.shutdown() != false {
@@ -73,7 +77,7 @@ final class MouseEventHandler {
 
     func reconcileMultitouchSource() {
         guard let controller, controller.hasStartedServices else { return }
-        let shouldRun = controller.settings.gestures.scrollEnabled || controller.settings.gestures.workspaceSwipeEnabled
+        let shouldRun = controller.settings.gestures.trackpadGesturesEnabled
         if shouldRun {
             if let multitouchSource {
                 if !multitouchSource.startLifecycle() {
@@ -146,6 +150,45 @@ final class MouseEventHandler {
         state.workspaceSwipeTracker.reset()
         clearGestureLatches()
         state.suppressTrackpadMomentumScroll = false
+        state.contactSessions = MultitouchContactSessions()
+        clearConsumedTrackpadSessions()
+    }
+
+    func drainTrackpadFrames(for senderId: UInt64, at location: CGPoint) {
+        guard let multitouchSource, multitouchSource.hasSender(senderId) else { return }
+        multitouchSource.drainRawFrameMailbox(location: location)
+    }
+
+    func updateContactSessions(_ contacts: MultitouchContactSessions) {
+        state.contactSessions = contacts
+        state.consumedTrackpadSessions = state.consumedTrackpadSessions.filter {
+            contacts.contains($0.value)
+        }
+    }
+
+    func retainConsumedTrackpadSession() {
+        guard state.gesturePhase != .idle,
+              let contact = state.lockedGestureContext?.contactSession,
+              let senderId = contact.senderId, senderId != 0,
+              state.contactSessions.contains(contact)
+        else { return }
+        state.consumedTrackpadSessions[senderId] = contact
+    }
+
+    func clearConsumedTrackpadSessions() {
+        state.consumedTrackpadSessions.removeAll(keepingCapacity: true)
+    }
+
+    func consumesTrackpadSession(senderId: UInt64) -> Bool {
+        if state.gesturePhase != .idle,
+           let contact = state.lockedGestureContext?.contactSession,
+           contact.senderId == senderId,
+           state.contactSessions.contains(contact)
+        {
+            return true
+        }
+        guard let contact = state.consumedTrackpadSessions[senderId] else { return false }
+        return state.contactSessions.contains(contact)
     }
 
     func recordMouseWarpSample() {
@@ -163,14 +206,17 @@ final class MouseEventHandler {
         case .mouseMoved:
             performanceCounters?.mouseMovedEvents &+= 1
         case .leftMouseDragged,
-             .rightMouseDragged:
+             .rightMouseDragged,
+             .otherMouseDragged:
             performanceCounters?.mouseDraggedEvents &+= 1
         case .scrollWheel:
             performanceCounters?.scrollEvents &+= 1
         case .leftMouseDown,
              .leftMouseUp,
              .rightMouseDown,
-             .rightMouseUp:
+             .rightMouseUp,
+             .otherMouseDown,
+             .otherMouseUp:
             performanceCounters?.buttonEvents &+= 1
         default:
             break

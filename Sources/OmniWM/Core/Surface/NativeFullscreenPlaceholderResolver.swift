@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -57,6 +57,7 @@ struct NativeFullscreenPlaceholderResolver {
                 originalToken: descriptor.originalToken,
                 currentToken: currentToken,
                 workspaceId: descriptor.workspaceId,
+                windowTitle: descriptor.windowTitle,
                 frame: slot.frame,
                 displayContext: projection.displayContext,
                 selected: selected,
@@ -98,6 +99,7 @@ struct NativeFullscreenPlaceholderResolver {
             originalToken: descriptor.originalToken,
             currentToken: currentToken,
             workspaceId: descriptor.workspaceId,
+            windowTitle: descriptor.windowTitle,
             frame: previous.frame,
             displayContext: previous.displayContext,
             selected: selected,
@@ -115,6 +117,7 @@ struct NativeFullscreenPlaceholderResolver {
             originalToken: descriptor.originalToken,
             currentToken: currentToken,
             workspaceId: descriptor.workspaceId,
+            windowTitle: descriptor.windowTitle,
             frame: previous?.frame ?? .zero,
             displayContext: previous?.displayContext,
             selected: selected,

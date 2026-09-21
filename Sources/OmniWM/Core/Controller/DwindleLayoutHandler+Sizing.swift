@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -67,6 +67,7 @@ extension DwindleLayoutHandler {
     func enableDwindleLayout() {
         guard let controller else { return }
         let engine = DwindleLayoutEngine()
+        engine.tabRailWidth = controller.tabRailStyle.reservedWidth
         engine.animationClock = controller.animationClock
         controller.dwindleEngine = engine
         controller.layoutRefreshController.requestRelayout(reason: .layoutConfigChanged)

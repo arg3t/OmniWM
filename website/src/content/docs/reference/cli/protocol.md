@@ -160,13 +160,14 @@ Workspace requests use this flat wire shape. For `move-to-monitor`, `force` is o
   "ok": true,
   "kind": "<ping|version|command|capture|query|rule|workspace|window|subscribe>",
   "status": "<success|executed|ignored|error|subscribed>",
-  "code": null,
   "result": {
     "kind": "<pong|version|capture|workspace-bar|active-workspace|focused-monitor|apps|metrics|focused-window|windows|workspaces|displays|rules|rule-actions|queries|commands|subscriptions|capabilities|subscribed>",
     "payload": { ... }
   }
 }
 ```
+
+Optional response fields are omitted when unavailable. For example, a successful response has no `code` key; it does not send `"code": null`.
 
 Authorization, protocol, validation, and routing failures keep the originating response `kind`. For example:
 
@@ -237,7 +238,7 @@ This envelope is produced locally by the CLI, so it does not include IPC fields 
 | `stale_window_id` | Well-formed window ID belongs to a different IPC session |
 | `not_found` | Target window, workspace, monitor, or rule does not exist |
 | `window_action_failed` | The window exists but its close button is missing or refused the action |
-| `no_change` | Request resolved to the current state (workspace already active, window already on the target, nothing to raise or rescue); status is `ignored` |
+| `no_change` | Request resolved to the current state (workspace already active and holding keyboard focus, window already on the target, nothing to raise or rescue); status is `ignored`. `switch-workspace`, `switch-workspace slot`, `switch-workspace anywhere`, and `workspace focus-name` return `executed` instead when the workspace is already visible but keyboard focus must be handed back to it |
 | `workspace_assignment_conflict` | Configured monitor assignment prevents the requested workspace move |
 | `workspace_state_conflict` | Current fullscreen, scratchpad, or pending focus state prevents the requested workspace move |
 | `capture_state_conflict` | Capture state does not permit the requested start or stop transition |

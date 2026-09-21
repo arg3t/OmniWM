@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import Foundation
 
@@ -17,7 +17,7 @@ struct GitHubIssueURLBuilder {
     init(
         appVersion: String = Bundle.main.appVersion ?? "unknown",
         osVersion: String = ProcessInfo.processInfo.operatingSystemVersionString,
-        newIssueURLString: String = "https://github.com/BarutSRB/OmniWM/issues/new",
+        newIssueURLString: String = "https://github.com/OmniNull/OmniWM/issues/new",
         maxURLLength: Int = 8000
     ) {
         self.appVersion = appVersion

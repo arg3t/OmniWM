@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import SwiftUI
@@ -177,6 +177,13 @@ struct MonitorSettingsTab: View {
                     )
                 }
             }
+
+            MonitorRolesSection(
+                settings: settings.monitors,
+                connectedMonitors: connectedMonitors,
+                displayLabels: displayLabels,
+                onRankingChanged: controller.updateWorkspaceConfig
+            )
 
             Section("Cross-Monitor Behavior") {
                 Toggle("Focus Across Monitor at Edge", isOn: Bindable(settings.focus).crossesMonitorAtEdge)
@@ -360,6 +367,7 @@ private struct SelectedMonitorDetails: View {
     @Bindable var controller: WMController
     let monitor: Monitor
     let displayLabel: MonitorDisplayLabel
+    @State private var rejectedGestureConflict: TrackpadGestureConflict?
 
     private var orientationOverride: Monitor.Orientation? {
         settings.monitors.orientationSettings(for: monitor)?.orientation
@@ -367,6 +375,14 @@ private struct SelectedMonitorDetails: View {
 
     private var effectiveOrientation: Monitor.Orientation {
         settings.monitors.effectiveOrientation(for: monitor)
+    }
+
+    private var gestureConflict: TrackpadGestureConflict? {
+        rejectedGestureConflict ?? GestureSettingsValidation.conflict(
+            gestures: settings.gestures.export(),
+            orientationOverrides: settings.monitors.orientationOverrides,
+            monitors: controller.workspaceManager.monitors
+        )
     }
 
     var body: some View {
@@ -412,20 +428,20 @@ private struct SelectedMonitorDetails: View {
         SettingsCaption(
             "Vertical monitors scroll windows top-to-bottom instead of left-to-right."
         )
+
+        if let conflict = gestureConflict {
+            Label(conflict.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        }
     }
 
     private func updateOrientation(_ orientation: Monitor.Orientation?) {
-        let newSettings = MonitorOrientationSettings(
-            monitorName: monitor.name,
-            orientation: orientation
+        rejectedGestureConflict = settings.updateMonitorOrientation(
+            orientation,
+            for: monitor,
+            monitors: controller.workspaceManager.monitors
         )
-
-        if orientation == nil {
-            settings.monitors.removeOrientationSettings(for: monitor)
-        } else {
-            settings.monitors.updateOrientationSettings(newSettings, for: monitor)
-        }
-
+        guard rejectedGestureConflict == nil else { return }
         controller.updateMonitorOrientations()
     }
 }

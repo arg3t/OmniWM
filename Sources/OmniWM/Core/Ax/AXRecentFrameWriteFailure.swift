@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -13,7 +13,7 @@ struct AXRecentFrameWriteFailure {
     let settersSucceeded: Bool
     let components: AXFrameComponents
     var isTerminalRefusal = false
-    private static let maxAcceptedSizeSnap: CGFloat = 16
+    static let maxAcceptedSizeSnap: CGFloat = 16
 
     private static func isAXTopLeftAnchoredSizeClamp(target: CGRect, observed: CGRect) -> Bool {
         guard !target.isNull,

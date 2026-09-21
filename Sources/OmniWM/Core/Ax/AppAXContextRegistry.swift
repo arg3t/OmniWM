@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import ApplicationServices
@@ -22,11 +22,9 @@ enum AppAXContextRegistry {
     }
 
     @MainActor
-    static func getOrCreate(_ nsApp: NSRunningApplication) async throws -> AppAXContext? {
-        let pid = nsApp.processIdentifier
-
+    static func getOrCreate(_ nsApp: NSRunningApplication, pid: pid_t) async throws -> AppAXContext? {
+        guard pid > 0, pid != ProcessInfo.processInfo.processIdentifier else { return nil }
         if let existing = contexts[pid] { return existing }
-        if pid == ProcessInfo.processInfo.processIdentifier { return nil }
 
         try Task.checkCancellation()
 
@@ -42,7 +40,7 @@ enum AppAXContextRegistry {
                 }
             }
 
-            let context = try await AppAXContext.createContext(nsApp, generation: generation)
+            let context = try await AppAXContext.createContext(nsApp, pid: pid, generation: generation)
             guard appAXCallbackGenerationRegistry.isCurrent(generation) else {
                 context?.destroy()
                 return nil

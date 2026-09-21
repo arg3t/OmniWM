@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -51,6 +51,11 @@ final class WorkspaceBarSplitGeometryTests: XCTestCase {
             windowLevel: .popup,
             height: 24,
             backgroundOpacity: 0.1,
+            inactiveIconOpacity: nil,
+            transparentBackground: false,
+            solidBlackBackground: false,
+            showItemBackgrounds: true,
+            showAccentHighlights: true,
             xOffset: xOffset,
             yOffset: yOffset,
             accentColor: nil,

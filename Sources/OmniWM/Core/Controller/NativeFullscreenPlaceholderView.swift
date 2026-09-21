@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import CoreText
 
 final class NativeFullscreenPlaceholderView: NSView {
-    private static let title = "In macOS Full Screen"
+    private static let status = "In macOS Full Screen"
     private static let subtitle = "Move or resize this slot; the window will return here."
     private static let activationModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift, .function]
     private static let titleFont = NSFont.systemFont(ofSize: 17, weight: .semibold) as CTFont
@@ -13,10 +13,24 @@ final class NativeFullscreenPlaceholderView: NSView {
 
     private let appName: String
     private let icon: CGImage?
-    private let titleLine: CTLine
-    private let subtitleLine: CTLine
-    private let titleLineWidth: CGFloat
-    private let subtitleLineWidth: CGFloat
+    private var titleLine: CTLine
+    private static let statusLine = makeLine(status, font: subtitleFont, color: .white)
+    private static let subtitleLine = makeLine(
+        subtitle,
+        font: subtitleFont,
+        color: NSColor.white.withAlphaComponent(0.78)
+    )
+    private static let titleEllipsis = makeLine("…", font: titleFont, color: .white)
+    private static let subtitleEllipsis = makeLine(
+        "…",
+        font: subtitleFont,
+        color: NSColor.white.withAlphaComponent(0.78)
+    )
+    private(set) var titleText: String
+    private(set) var displayedTitleLine: CTLine?
+    private(set) var displayedStatusLine: CTLine?
+    private var displayedSubtitleLine: CTLine?
+    private var textWidth: CGFloat = -1
     private var tracking: NSTrackingArea?
     private var isHovered = false
     private var isPressed = false
@@ -25,31 +39,37 @@ final class NativeFullscreenPlaceholderView: NSView {
 
     var onActivate: (() -> Void)?
 
-    init(appName: String?, icon: NSImage?) {
-        let resolvedAppName = appName ?? "Application"
+    init(windowTitle: String, appName: String?, icon: NSImage?) {
+        let resolvedAppName = appName.flatMap { $0.isEmpty ? nil : $0 } ?? "Application"
         self.appName = resolvedAppName
+        titleText = Self.resolvedTitle(windowTitle, appName: resolvedAppName)
+        titleLine = Self.makeLine(titleText, font: Self.titleFont, color: .white)
         let sourceIcon = icon ?? NSImage(named: NSImage.applicationIconName)
         self.icon = sourceIcon?.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        let titleAttributed = Self.attributedLine(
-            Self.title,
-            font: Self.titleFont,
-            color: .white
-        )
-        let subtitleAttributed = Self.attributedLine(
-            Self.subtitle,
-            font: Self.subtitleFont,
-            color: NSColor.white.withAlphaComponent(0.78)
-        )
-        let resolvedTitleLine = CTLineCreateWithAttributedString(titleAttributed)
-        let resolvedSubtitleLine = CTLineCreateWithAttributedString(subtitleAttributed)
-        titleLine = resolvedTitleLine
-        subtitleLine = resolvedSubtitleLine
-        titleLineWidth = CGFloat(CTLineGetTypographicBounds(resolvedTitleLine, nil, nil, nil))
-        subtitleLineWidth = CGFloat(CTLineGetTypographicBounds(resolvedSubtitleLine, nil, nil, nil))
         super.init(frame: .zero)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         toolTip = "Press to switch Spaces. The tiling position remains reserved."
+        updateTextGeometry()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateTextGeometry()
+    }
+
+    override func setBoundsSize(_ newSize: NSSize) {
+        super.setBoundsSize(newSize)
+        updateTextGeometry()
+    }
+
+    func setWindowTitle(_ windowTitle: String) {
+        let nextTitle = Self.resolvedTitle(windowTitle, appName: appName)
+        guard titleText != nextTitle else { return }
+        titleText = nextTitle
+        titleLine = Self.makeLine(nextTitle, font: Self.titleFont, color: .white)
+        textWidth = -1
+        updateTextGeometry()
     }
 
     @available(*, unavailable)
@@ -168,7 +188,7 @@ final class NativeFullscreenPlaceholderView: NSView {
     }
 
     override func accessibilityLabel() -> String? {
-        "\(appName), in macOS Full Screen"
+        "\(titleText), in macOS Full Screen"
     }
 
     override func accessibilityHelp() -> String? {
@@ -211,12 +231,7 @@ final class NativeFullscreenPlaceholderView: NSView {
 
     private func drawContent(in context: CGContext) {
         let shortestSide = min(bounds.width, bounds.height)
-        let maximumTextWidth = max(bounds.width - 48, 0)
-        if bounds.width < 180
-            || bounds.height < 140
-            || titleLineWidth > maximumTextWidth
-            || subtitleLineWidth > maximumTextWidth
-        {
+        if bounds.width < 180 || bounds.height < 140 {
             let iconSide = min(64, max(min(shortestSide, 24), shortestSide - 24))
             drawIcon(
                 in: CGRect(
@@ -232,24 +247,27 @@ final class NativeFullscreenPlaceholderView: NSView {
         let iconSide = min(96, max(48, shortestSide * 0.2))
         let titleHeight = CGFloat(CTFontGetAscent(Self.titleFont) + CTFontGetDescent(Self.titleFont))
         let subtitleHeight = CGFloat(CTFontGetAscent(Self.subtitleFont) + CTFontGetDescent(Self.subtitleFont))
-        let contentHeight = iconSide + 16 + titleHeight + 6 + subtitleHeight
-        let contentBottom = max((bounds.height - contentHeight) / 2, 16)
+        let contentHeight = iconSide + 16 + titleHeight + 12 + subtitleHeight * 2
+        let contentBottom = max((bounds.height - contentHeight) / 2, 4)
         let iconFrame = CGRect(
             x: (bounds.width - iconSide) / 2,
-            y: contentBottom + titleHeight + subtitleHeight + 22,
+            y: contentBottom + titleHeight + subtitleHeight * 2 + 28,
             width: iconSide,
             height: iconSide
         )
         drawIcon(in: iconFrame, context: context)
         drawCentered(
-            line: titleLine,
-            lineWidth: titleLineWidth,
+            line: displayedTitleLine,
+            baseline: contentBottom + subtitleHeight * 2 + 12,
+            context: context
+        )
+        drawCentered(
+            line: displayedStatusLine,
             baseline: contentBottom + subtitleHeight + 6,
             context: context
         )
         drawCentered(
-            line: subtitleLine,
-            lineWidth: subtitleLineWidth,
+            line: displayedSubtitleLine,
             baseline: contentBottom,
             context: context
         )
@@ -264,11 +282,12 @@ final class NativeFullscreenPlaceholderView: NSView {
     }
 
     private func drawCentered(
-        line: CTLine,
-        lineWidth: CGFloat,
+        line: CTLine?,
         baseline: CGFloat,
         context: CGContext
     ) {
+        guard let line else { return }
+        let lineWidth = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
         context.saveGState()
         context.textMatrix = .identity
         context.textPosition = CGPoint(x: (bounds.width - lineWidth) / 2, y: baseline)
@@ -284,17 +303,38 @@ final class NativeFullscreenPlaceholderView: NSView {
         return resolved ?? color.withAlphaComponent(alpha).cgColor
     }
 
-    private static func attributedLine(
+    private func updateTextGeometry() {
+        let nextWidth = max(0, bounds.width - 48)
+        guard textWidth != nextWidth else { return }
+        textWidth = nextWidth
+        displayedTitleLine = Self.truncatedLine(titleLine, width: nextWidth, token: Self.titleEllipsis)
+        displayedStatusLine = Self.truncatedLine(Self.statusLine, width: nextWidth, token: Self.subtitleEllipsis)
+        displayedSubtitleLine = Self.truncatedLine(Self.subtitleLine, width: nextWidth, token: Self.subtitleEllipsis)
+        needsDisplay = true
+    }
+
+    private static func resolvedTitle(_ title: String, appName: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? appName : trimmed
+    }
+
+    private static func truncatedLine(_ line: CTLine, width: CGFloat, token: CTLine) -> CTLine? {
+        guard width > 0 else { return nil }
+        guard CTLineGetTypographicBounds(line, nil, nil, nil) > width else { return line }
+        return CTLineCreateTruncatedLine(line, width, .end, token)
+    }
+
+    private static func makeLine(
         _ text: String,
         font: CTFont,
         color: NSColor
-    ) -> NSAttributedString {
-        return NSAttributedString(
+    ) -> CTLine {
+        CTLineCreateWithAttributedString(NSAttributedString(
             string: text,
             attributes: [
                 .font: font,
                 .foregroundColor: color
             ]
-        )
+        ))
     }
 }

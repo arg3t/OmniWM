@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -59,7 +59,7 @@ struct WorldView {
     }
 
     var borderConfig: BorderConfig {
-        BorderConfig.from(settings: controller.settings)
+        BorderConfig.from(settings: controller.settings, isDark: controller.borderUsesDarkAppearance)
     }
 
     func entry(for token: WindowToken) -> WindowState? {
@@ -92,6 +92,10 @@ struct WorldView {
         return infos
     }
 
+    var tabRailStyle: TabRailStyle {
+        controller.tabRailStyle
+    }
+
     func barSurfaces() -> [DesiredBarSurface] {
         guard controller.hasWorkspaceBarDataConsumers else { return [] }
         let settings = controller.settings
@@ -112,6 +116,11 @@ struct WorldView {
                         showLabels: resolved.showLabels,
                         showSystemStatsButton: resolved.systemStatsButton,
                         backgroundOpacity: resolved.backgroundOpacity,
+                        inactiveIconOpacity: resolved.inactiveIconOpacity,
+                        transparentBackground: resolved.transparentBackground,
+                        solidBlackBackground: resolved.solidBlackBackground,
+                        showItemBackgrounds: resolved.showItemBackgrounds,
+                        showAccentHighlights: resolved.showAccentHighlights,
                         barHeight: geometry.barHeight,
                         accentColor: resolved.accentColor,
                         textColor: resolved.textColor
@@ -132,6 +141,7 @@ struct WorldView {
                     originalToken: record.originalToken,
                     currentToken: record.currentToken,
                     workspaceId: record.workspaceId,
+                    windowTitle: entry?.managedReplacementMetadata?.title ?? "",
                     frame: .zero,
                     displayContext: nil,
                     selected: workspaceManager.selectedManagedToken == record.currentToken

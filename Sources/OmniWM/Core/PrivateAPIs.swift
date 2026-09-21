@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import ApplicationServices
 import Foundation
+
+@_silgen_name("CGEventCopyIOHIDEvent")
+func CGEventCopyIOHIDEvent(_ event: CGEvent) -> Unmanaged<CFTypeRef>?
+
+@_silgen_name("IOHIDEventGetSenderID")
+func IOHIDEventGetSenderID(_ event: CFTypeRef) -> UInt64
 
 typealias SLPSMode = UInt32
 let kCPSUserGenerated: SLPSMode = 0x200

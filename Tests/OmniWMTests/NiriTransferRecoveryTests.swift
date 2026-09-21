@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 @testable import OmniWM
@@ -139,12 +139,22 @@ final class NiriTransferRecoveryTests: XCTestCase {
         )
         XCTAssertEqual(fixture.column.width, .proportion(0.5))
         XCTAssertEqual(fixture.column.presetWidthIdx, 1)
-        XCTAssertTrue(fixture.column.hasManualSingleWindowWidthOverride)
+        XCTAssertFalse(fixture.column.hasManualSingleWindowWidthOverride)
         XCTAssertEqual(fixture.column.cachedWidth, 720)
         XCTAssertTrue(fixture.column.widthAnimation === sourceAnimation)
         XCTAssertEqual(fixture.column.targetWidth, 760)
         assertIndexMatchesTree(fixture.engine, in: fixture.workspaceId)
         assertIndexMatchesTree(fixture.engine, in: targetWorkspace)
+        XCTAssertEqual(
+            fixture.engine.calculateLayout(
+                state: sourceState,
+                workspaceId: fixture.workspaceId,
+                monitorFrame: workingFrame,
+                gaps: (horizontal: 0, vertical: 0),
+                orientation: .horizontal
+            )[fixture.second.token],
+            workingFrame
+        )
     }
 
     func testWindowTransferPreservesFullWidthRestoreStateWhenRecoveringTargetDuplicate() throws {

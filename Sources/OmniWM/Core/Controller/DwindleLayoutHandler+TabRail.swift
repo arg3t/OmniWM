@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -66,13 +66,19 @@ extension DwindleLayoutHandler {
             } else {
                 appName = nil
             }
+            let title = entry?.managedReplacementMetadata?.title
+                ?? entry.flatMap { entry in
+                    UInt32(exactly: entry.windowId).flatMap {
+                        AXWindowService.titlePreferFast(windowId: $0)
+                    }
+                }
             tabs.append(
                 TabRailTabInfo(
                     visualIndex: index,
                     token: member.token,
                     windowId: entry?.windowId,
                     appName: appName,
-                    title: entry?.managedReplacementMetadata?.title,
+                    title: title,
                     isActive: index == snapshot.activeIndex
                 )
             )

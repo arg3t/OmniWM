@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 @testable import OmniWM
@@ -330,7 +330,8 @@ final class NiriInteractionOwnershipTests: NiriInteractionTestCase {
         XCTAssertTrue(engine.findColumn(containing: sibling, in: sourceWorkspace) === sourceColumn)
         XCTAssertEqual(sourceColumn.width, .fixed(resizedWidth))
         XCTAssertEqual(sourceColumn.cachedWidth, resizedWidth)
-        XCTAssertTrue(sourceColumn.hasManualSingleWindowWidthOverride)
+        XCTAssertFalse(sourceColumn.hasManualSingleWindowWidthOverride)
+        XCTAssertEqual(layout(engine, in: sourceWorkspace)[sibling.token], workingFrame)
     }
 }
 

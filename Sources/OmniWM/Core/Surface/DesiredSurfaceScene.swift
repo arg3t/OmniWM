@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import CoreGraphics
 import Foundation
@@ -38,6 +38,7 @@ struct DesiredParkingEdgeMask: Equatable {
 struct DesiredSurfaceScene: Equatable {
     var border: DesiredBorderSurface?
     var tabRails: [TabRailInfo] = []
+    var tabRailStyle: TabRailStyle = .compact
     var placeholders: [NativeFullscreenPlaceholderUpdate] = []
     var bars: [DesiredBarSurface] = []
     var parkingEdgeMasks: [DesiredParkingEdgeMask] = []

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import AppKit
 import Foundation
@@ -13,6 +13,9 @@ extension MouseEventHandler {
             (1 << CGEventType.rightMouseDown.rawValue) |
             (1 << CGEventType.rightMouseDragged.rawValue) |
             (1 << CGEventType.rightMouseUp.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseDragged.rawValue) |
+            (1 << CGEventType.otherMouseUp.rawValue) |
             (1 << CGEventType.scrollWheel.rawValue)
         if !annotatedMoveTapInstalled {
             mask |= 1 << CGEventType.mouseMoved.rawValue
@@ -176,6 +179,8 @@ extension MouseEventHandler {
         let screenLocation = ScreenCoordinateSpace.toAppKit(point: location)
         let modifiers = event.flags
         let windowIdUnderPointer = type == .mouseMoved ? eventWindowIdUnderPointer(event) : nil
+        let buttonNumber = type == .otherMouseDown || type == .otherMouseDragged || type == .otherMouseUp
+            ? event.getIntegerValueField(.mouseEventButtonNumber) : nil
         let scrollPayload = type == .scrollWheel ? Self.scrollPayload(
             event,
             at: screenLocation,
@@ -184,6 +189,9 @@ extension MouseEventHandler {
         return MainActor.assumeIsolated {
             guard let handler = MouseEventHandler._instance else { return false }
             if handler.isCapturingPerformance { handler.recordCGEvent(type) }
+            if let buttonNumber {
+                return handler.receiveTapOverviewMouseButton(type: type, button: buttonNumber)
+            }
             return handler.dispatchTapEvent(
                 type: type, location: screenLocation, modifiers: modifiers,
                 windowIdUnderPointer: windowIdUnderPointer, scrollPayload: scrollPayload
@@ -235,6 +243,16 @@ extension MouseEventHandler {
     private nonisolated static func scrollPayload(
         _ event: CGEvent, at screenLocation: CGPoint, modifiersRawValue: UInt64
     ) -> MouseScrollIntake {
+        let momentumPhase = UInt32(event.getIntegerValueField(.scrollWheelEventMomentumPhase))
+        let phase = UInt32(event.getIntegerValueField(.scrollWheelEventScrollPhase))
+        let isContinuous = event.getIntegerValueField(.scrollWheelEventIsContinuous) != 0
+        var senderId: UInt64?
+        if momentumPhase == 0, phase == 0, isContinuous,
+           let hidEvent = CGEventCopyIOHIDEvent(event)?.takeRetainedValue()
+        {
+            let sender = IOHIDEventGetSenderID(hidEvent)
+            if sender != 0 { senderId = sender }
+        }
         return MouseScrollIntake(
             location: screenLocation,
             deltaX: resolvedWheelAxisDelta(
@@ -245,9 +263,11 @@ extension MouseEventHandler {
                 pointDelta: CGFloat(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1)),
                 fixedPointDelta: CGFloat(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1))
             ),
-            momentumPhase: UInt32(event.getIntegerValueField(.scrollWheelEventMomentumPhase)),
-            phase: UInt32(event.getIntegerValueField(.scrollWheelEventScrollPhase)),
-            modifiersRawValue: modifiersRawValue
+            momentumPhase: momentumPhase,
+            phase: phase,
+            modifiersRawValue: modifiersRawValue,
+            isContinuous: isContinuous,
+            senderId: senderId
         )
     }
 

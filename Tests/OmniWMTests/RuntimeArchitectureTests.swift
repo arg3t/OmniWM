@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Copyright (C) 2026 BarutSRB — https://github.com/BarutSRB/OmniWM
+// Copyright (C) 2026 BarutSRB — https://github.com/OmniNull/OmniWM
 
 import ApplicationServices
 @testable import OmniWM
@@ -864,6 +864,9 @@ final class RuntimeArchitectureTests: XCTestCase {
             .rightMouseDown,
             .rightMouseDragged,
             .rightMouseUp,
+            .otherMouseDown,
+            .otherMouseDragged,
+            .otherMouseUp,
             .scrollWheel
         ] {
             let bit: CGEventMask = 1 << type.rawValue
@@ -2493,7 +2496,7 @@ final class RuntimeArchitectureTests: XCTestCase {
         let previous = DesiredBorderSurface(
             token: token,
             frame: CGRect(x: 20, y: 30, width: 400, height: 300),
-            config: BorderConfig.from(settings: controller.settings)
+            config: BorderConfig.from(settings: controller.settings, isDark: controller.borderUsesDarkAppearance)
         )
         var boundsQueryCount = 0
         let world = WorldView(controller: controller, liveBoundsProvider: { _ in
