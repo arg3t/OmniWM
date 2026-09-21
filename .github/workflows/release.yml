@@ -53,7 +53,7 @@ jobs:
           mkdir -p Frameworks
           curl --fail --location --retry 3 \
             --output "$RUNNER_TEMP/GhosttyKit.xcframework.zip" \
-            "https://github.com/BarutSRB/OmniWM/releases/download/v$OMNIWM_GHOSTTY_DOWNLOAD_VERSION/GhosttyKit.xcframework-v$OMNIWM_GHOSTTY_DOWNLOAD_VERSION.zip"
+            "$OMNIWM_GHOSTTY_DOWNLOAD_URL"
           ditto -x -k "$RUNNER_TEMP/GhosttyKit.xcframework.zip" Frameworks
 
       - name: Build and sign app
