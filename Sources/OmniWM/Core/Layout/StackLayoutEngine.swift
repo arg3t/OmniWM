@@ -92,9 +92,9 @@ final class StackLayoutEngine {
         let offset: Int
         switch direction {
         case .up:
-            offset = -1
-        case .down:
             offset = 1
+        case .down:
+            offset = -1
         case .left, .right:
             return nil
         }

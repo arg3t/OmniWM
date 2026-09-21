@@ -205,6 +205,8 @@ final class NativeAppUnhideTests: XCTestCase {
                     _ = controller.niriEngine?.addWindow(token: token, to: targetWorkspace, afterSelection: nil)
                 case .dwindle:
                     _ = controller.dwindleEngine?.addWindow(token: token, to: targetWorkspace, activeWindowFrame: nil)
+                case .stack:
+                    controller.stackEngine?.syncWindows([token], in: targetWorkspace)
                 }
             }
             controller.axEventHandler.handleAppHidden(pid: token.pid, source: .service)

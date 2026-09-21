@@ -56,7 +56,7 @@ extension WindowActionHandler {
             return nil
         }
         if targetLayoutKind == .stack, controller.stackEngine == nil {
-            return false
+            return nil
         }
 
         let currentWsId = controller.activeWorkspace()?.id

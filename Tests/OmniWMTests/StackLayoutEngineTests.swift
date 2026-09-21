@@ -93,21 +93,21 @@ final class StackLayoutEngineTests: XCTestCase {
         XCTAssertTrue(engine.activate(tokens[1], in: workspaceId))
 
         XCTAssertEqual(
-            engine.neighbor(of: tokens[1], direction: .down, among: eligibleTokens, in: workspaceId),
+            engine.neighbor(of: tokens[1], direction: .up, among: eligibleTokens, in: workspaceId),
             tokens[2]
         )
         XCTAssertEqual(
-            engine.neighbor(of: tokens[0], direction: .up, among: eligibleTokens, in: workspaceId),
+            engine.neighbor(of: tokens[0], direction: .down, among: eligibleTokens, in: workspaceId),
             tokens[2]
         )
-        XCTAssertTrue(engine.move(tokens[1], direction: .down, among: eligibleTokens, in: workspaceId))
+        XCTAssertTrue(engine.move(tokens[1], direction: .up, among: eligibleTokens, in: workspaceId))
         XCTAssertEqual(engine.orderedTokens(in: workspaceId), [tokens[0], tokens[2], tokens[1]])
-        XCTAssertTrue(engine.move(tokens[1], direction: .down, among: eligibleTokens, in: workspaceId))
+        XCTAssertTrue(engine.move(tokens[1], direction: .up, among: eligibleTokens, in: workspaceId))
         XCTAssertEqual(engine.orderedTokens(in: workspaceId), [tokens[1], tokens[2], tokens[0]])
         XCTAssertEqual(engine.selectedToken(in: workspaceId), tokens[1])
     }
 
-    func testDefaultFocusAndMoveBindingsRouteToStackOrder() throws {
+    func testDefaultFocusAndMoveBindingsFollowStackDirection() throws {
         let controller = makeController()
         controller.settings.workspaces.configurations.append(WorkspaceConfiguration(name: "80", layoutType: .stack))
         controller.workspaceManager.applySettings()
@@ -131,10 +131,13 @@ final class StackLayoutEngineTests: XCTestCase {
         }
         XCTAssertTrue(controller.workspaceManager.setManagedFocus(tokens[1], in: workspaceId, onMonitor: monitor.id))
 
-        XCTAssertEqual(controller.commandHandler.performCommand(.focus(.down)), .executed)
+        XCTAssertEqual(controller.commandHandler.performCommand(.focus(.up)), .executed)
         XCTAssertEqual(engine.selectedToken(in: workspaceId), tokens[2])
-        XCTAssertEqual(controller.commandHandler.performCommand(.move(.down)), .executed)
-        XCTAssertEqual(engine.orderedTokens(in: workspaceId), [tokens[2], tokens[1], tokens[0]])
+        controller.workspaceManager.withEngineMutationScope(in: workspaceId) {
+            XCTAssertTrue(engine.activate(tokens[1], in: workspaceId))
+        }
+        XCTAssertEqual(controller.commandHandler.performCommand(.move(.up)), .executed)
+        XCTAssertEqual(engine.orderedTokens(in: workspaceId), [tokens[0], tokens[2], tokens[1]])
     }
 
     private func token(_ windowId: Int) -> WindowToken {

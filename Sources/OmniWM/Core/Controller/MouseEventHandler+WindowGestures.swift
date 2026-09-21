@@ -32,6 +32,8 @@ extension MouseEventHandler {
                 in: wsId,
                 at: controller.animationClock.now()
             )
+        case .stack:
+            return nil
         }
     }
 
