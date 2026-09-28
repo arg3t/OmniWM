@@ -51,6 +51,36 @@ extension WorkspaceManager {
         return macOSAdjacentMonitor(from: current, direction: direction, wrapAround: wrapAround)
     }
 
+    func cursorRoute(
+        from monitorId: Monitor.ID,
+        direction: Direction,
+        edgeRatio: CGFloat
+    ) -> MonitorRouting.CursorRoute? {
+        guard let current = monitor(byId: monitorId) else { return nil }
+
+        if settings.monitors.routingMode == .custom {
+            switch MonitorRouting.cursorRoute(
+                from: current,
+                direction: direction,
+                edgeRatio: edgeRatio,
+                layout: MonitorRouting.layout(for: monitors, in: settings.monitors.arrangements),
+                monitors: monitors
+            ) {
+            case let .route(route):
+                return route
+            case .edge:
+                return nil
+            case .fallBackToMacOS:
+                break
+            }
+        }
+
+        guard let target = macOSAdjacentMonitor(from: current, direction: direction, wrapAround: false) else {
+            return nil
+        }
+        return MonitorRouting.CursorRoute(monitor: target, destinationRatio: edgeRatio)
+    }
+
     func previousMonitor(from monitorId: Monitor.ID) -> Monitor? {
         guard monitors.count > 1 else { return nil }
 

@@ -86,6 +86,27 @@ final class MouseContainmentTests: XCTestCase {
         assertWall(verdict, CGPoint(x: 997, y: 500))
     }
 
+    func testDiagonalCursorRouteAllowsTheMatchedUpperDisplay() {
+        let bottom = makeMonitor(1, "Bottom", CGRect(x: 0, y: 0, width: 1000, height: 1000))
+        let topLeft = makeMonitor(2, "Top Left", CGRect(x: -400, y: 1000, width: 1000, height: 1000))
+        let topRight = makeMonitor(3, "Top Right", CGRect(x: 400, y: 1000, width: 1000, height: 1000))
+        let monitors = [bottom, topLeft, topRight]
+        let layout = [
+            routing(1, "Bottom", 0, 1),
+            routing(2, "Top Left", 0, 0),
+            routing(3, "Top Right", 1, 0)
+        ]
+
+        let verdict = MouseContainment(layout: layout, monitors: monitors).evaluate(
+            location: CGPoint(x: 750, y: 1005),
+            source: bottom,
+            destination: topRight,
+            margin: 1
+        )
+
+        XCTAssertEqual(verdict, .allow)
+    }
+
     func testIncompleteDuplicateAndUnreachableLayoutsFailOpen() {
         let source = makeMonitor(1, "Source", CGRect(x: 0, y: 0, width: 1000, height: 1000))
         let destination = makeMonitor(2, "Destination", CGRect(x: 0, y: 1000, width: 1000, height: 1000))
@@ -111,7 +132,7 @@ final class MouseContainmentTests: XCTestCase {
             .allow
         )
         XCTAssertEqual(
-            MouseContainment(layout: [routing(1, "Source", 0, 0), routing(2, "Destination", 1, 1)], monitors: monitors)
+            MouseContainment(layout: [routing(1, "Source", 0, 0), routing(2, "Destination", 1, 2)], monitors: monitors)
                 .evaluate(
                     location: CGPoint(x: 500, y: 1500),
                     source: source,

@@ -204,8 +204,8 @@ struct MonitorSetupPhysicalArrangementStep: View {
             }
 
             Text(
-                "A display can be farther away in the grid, but every display must be reachable "
-                    + "through a shared row or column. A diagonal tile by itself is disconnected."
+                "A display can be farther away in the grid. A diagonal display can receive a cursor jump, "
+                    + "and a display below two others splits its top edge between them."
             )
             .font(.caption)
             .foregroundStyle(.secondary)

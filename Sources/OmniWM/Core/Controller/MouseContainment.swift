@@ -22,18 +22,18 @@ struct MouseContainment {
         guard MonitorRouting.completeLayout(layout, for: monitors) != nil else { return .allow }
         guard let direction = Self.physicalDirection(from: source, to: destination) else { return .allow }
 
-        switch MonitorRouting.gridAdjacent(
+        switch MonitorRouting.cursorRoute(
             from: source,
             direction: direction,
+            edgeRatio: Self.edgeRatio(at: location, from: source, direction: direction),
             layout: layout,
-            monitors: monitors,
-            wrapAround: false
+            monitors: monitors
         ) {
-        case let .monitor(routed) where routed.id == destination.id:
+        case let .route(route) where route.monitor.id == destination.id:
             return .allow
         case .fallBackToMacOS:
             return .allow
-        case .monitor,
+        case .route,
              .edge:
             break
         }
@@ -58,6 +58,21 @@ struct MouseContainment {
         return dy > 0 ? .up : .down
     }
 
+    private static func edgeRatio(at location: CGPoint, from source: Monitor, direction: Direction) -> CGFloat {
+        let ratio: CGFloat
+        switch direction {
+        case .left,
+             .right:
+            guard source.frame.height > 0 else { return 0.5 }
+            ratio = (source.frame.maxY - location.y) / source.frame.height
+        case .up,
+             .down:
+            guard source.frame.width > 0 else { return 0.5 }
+            ratio = (location.x - source.frame.minX) / source.frame.width
+        }
+        return min(max(ratio, 0), 1)
+    }
+
     private func isReachable(
         from source: Monitor,
         to destination: Monitor
@@ -73,19 +88,16 @@ struct MouseContainment {
                 return true
             }
             for direction in directions {
-                switch MonitorRouting.gridAdjacent(
+                guard let neighbors = MonitorRouting.cursorNeighbors(
                     from: current,
                     direction: direction,
                     layout: layout,
-                    monitors: monitors,
-                    wrapAround: false
-                ) {
-                case let .monitor(next) where visited.insert(next.id).inserted:
-                    pending.append(next)
-                case .monitor,
-                     .edge,
-                     .fallBackToMacOS:
-                    break
+                    monitors: monitors
+                ) else {
+                    return false
+                }
+                for neighbor in neighbors where visited.insert(neighbor.id).inserted {
+                    pending.append(neighbor)
                 }
             }
         }

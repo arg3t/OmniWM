@@ -28,7 +28,7 @@ final class MonitorSetupModelTests: XCTestCase {
         XCTAssertEqual(draft.cell(for: monitors[0].id), .init(column: 0, row: 0))
         XCTAssertEqual(draft.cell(for: monitors[1].id), .init(column: 0, row: 1))
         XCTAssertFalse(draft.mouseWarpEnabled)
-        XCTAssertTrue(draft.isCardinallyConnected)
+        XCTAssertTrue(draft.isConnected)
     }
 
     func testMacOSModeSnapshotsGeometryInsteadOfInactiveCustomLayout() {
@@ -135,12 +135,11 @@ final class MonitorSetupModelTests: XCTestCase {
 
         XCTAssertEqual(draft.cell(for: monitors[0].id), .init(column: 1, row: 1))
         XCTAssertEqual(draft.cell(for: monitors[1].id), .init(column: 0, row: 0))
-        XCTAssertFalse(draft.isCardinallyConnected)
+        XCTAssertTrue(draft.isConnected)
     }
 
-    func testConnectivityMatchesRuntimeCardinalLines() {
-        let horizontal = sideBySideMonitors()
-        let diagonal = [
+    func testDiagonalTilesAreConnectedForCursorRouting() {
+        let monitors = [
             makeMonitor(
                 displayId: 2,
                 name: "First",
@@ -155,25 +154,18 @@ final class MonitorSetupModelTests: XCTestCase {
             )
         ]
 
-        let connectedDraft = MonitorSetupDraft(
-            monitors: horizontal,
-            routingMode: .macOS,
-            arrangements: [],
-            mouseWarpEnabled: true,
-            workspaceConfigurations: []
-        )
-        let disconnectedDraft = MonitorSetupDraft(
-            monitors: diagonal,
+        let draft = MonitorSetupDraft(
+            monitors: monitors,
             routingMode: .macOS,
             arrangements: [],
             mouseWarpEnabled: true,
             workspaceConfigurations: []
         )
 
-        XCTAssertTrue(connectedDraft.isCardinallyConnected)
-        XCTAssertFalse(disconnectedDraft.isCardinallyConnected)
-        XCTAssertEqual(disconnectedDraft.readiness(for: diagonal), .disconnected)
+        XCTAssertTrue(draft.isConnected)
+        XCTAssertEqual(draft.readiness(for: monitors), .ready)
     }
+
 
     func testReadinessDetectsMonitorIdentitySetChanges() {
         let monitors = sideBySideMonitors()

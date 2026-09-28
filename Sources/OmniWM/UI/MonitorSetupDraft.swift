@@ -83,7 +83,7 @@ struct MonitorSetupDraft {
         normalizeAndCompact()
     }
 
-    var isCardinallyConnected: Bool {
+    var isConnected: Bool {
         guard !cells.isEmpty else { return false }
         guard Set(cells.values).count == cells.count else { return false }
 
@@ -95,7 +95,9 @@ struct MonitorSetupDraft {
             guard let currentCell = cells[current] else { continue }
             let neighbors = remaining.filter { candidate in
                 guard let candidateCell = cells[candidate] else { return false }
-                return candidateCell.column == currentCell.column || candidateCell.row == currentCell.row
+                let columnDistance = abs(candidateCell.column - currentCell.column)
+                let rowDistance = abs(candidateCell.row - currentCell.row)
+                return columnDistance == 0 || rowDistance == 0 || columnDistance == rowDistance
             }
             remaining.subtract(neighbors)
             frontier.append(contentsOf: neighbors)
@@ -123,7 +125,7 @@ struct MonitorSetupDraft {
         else {
             return .monitorConfigurationChanged
         }
-        return isCardinallyConnected ? .ready : .disconnected
+        return isConnected ? .ready : .disconnected
     }
 
     func routingSettings(monitors: [Monitor]) -> [MonitorRoutingSettings]? {

@@ -127,6 +127,41 @@ final class MonitorRoutingTests: XCTestCase {
         XCTAssertEqual(adjacent(from: c, .right, layout: layout, monitors: monitors, wrap: false), .edge)
     }
 
+    func testCursorRouteSplitsLowerDisplayBetweenTwoUpperDisplays() {
+        let topLeft = makeMonitor(1, "Top Left")
+        let topRight = makeMonitor(2, "Top Right")
+        let bottom = makeMonitor(3, "Bottom")
+        let monitors = [topLeft, topRight, bottom]
+        let layout = [
+            routing(1, "Top Left", 0, 0),
+            routing(2, "Top Right", 1, 0),
+            routing(3, "Bottom", 0, 1)
+        ]
+
+        assertCursorRoute(
+            MonitorRouting.cursorRoute(
+                from: bottom,
+                direction: .up,
+                edgeRatio: 0.25,
+                layout: layout,
+                monitors: monitors
+            ),
+            target: topLeft,
+            ratio: 0.5
+        )
+        assertCursorRoute(
+            MonitorRouting.cursorRoute(
+                from: bottom,
+                direction: .up,
+                edgeRatio: 0.75,
+                layout: layout,
+                monitors: monitors
+            ),
+            target: topRight,
+            ratio: 0.5
+        )
+    }
+
     func testSourceWithoutEntryFallsBackToMacOS() {
         let a = makeMonitor(1, "A")
         let b = makeMonitor(2, "B")
@@ -166,6 +201,20 @@ final class MonitorRoutingTests: XCTestCase {
 
         XCTAssertEqual(adjacent(from: b, .right, layout: layout, monitors: monitors), .edge)
         XCTAssertEqual(adjacent(from: a, .right, layout: layout, monitors: monitors), .monitor(b))
+    }
+
+    private func assertCursorRoute(
+        _ adjacency: MonitorRouting.CursorAdjacency,
+        target: Monitor,
+        ratio: CGFloat,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard case let .route(route) = adjacency else {
+            return XCTFail("Expected a cursor route", file: file, line: line)
+        }
+        XCTAssertEqual(route.monitor, target, file: file, line: line)
+        XCTAssertEqual(route.destinationRatio, ratio, accuracy: 0.0001, file: file, line: line)
     }
 
     func testArrangementPrefersExactSetThenSmallestCoveringSetWithStableTies() {

@@ -104,17 +104,19 @@ final class MouseWarpHandler: NSObject {
         ) else {
             return false
         }
-        guard let target = controller.workspaceManager.adjacentMonitor(
+        guard let route = controller.workspaceManager.cursorRoute(
             from: sourceMonitor.id,
-            direction: crossing.direction
+            direction: crossing.direction,
+            edgeRatio: crossing.ratio
         ) else {
             return false
         }
+        let target = route.monitor
 
         let destination = MouseWarpGeometry.destinationPoint(
             on: target.frame,
             entryEdge: crossing.entryEdge,
-            ratio: crossing.ratio,
+            ratio: route.destinationRatio,
             margin: margin
         )
         let warpPoint = ScreenCoordinateSpace.toWindowServer(point: destination)

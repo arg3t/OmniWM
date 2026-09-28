@@ -167,6 +167,60 @@ final class CursorContainmentHandlerTests: XCTestCase {
         XCTAssertEqual(fixture.handler.state.lastMonitorId, fixture.top.id)
     }
 
+    func testCursorWarpSplitsLowerDisplayBetweenTwoUpperDisplays() {
+        let settings = makeSettings()
+        settings.pointer.enabled = true
+        settings.pointer.constrainToArrangement = false
+        settings.monitors.routingMode = .custom
+
+        let topLeft = makeMonitor(1, "Top Left", CGRect(x: -1000, y: 1000, width: 1000, height: 1000))
+        let topRight = makeMonitor(2, "Top Right", CGRect(x: 1000, y: 1000, width: 1000, height: 1000))
+        let bottom = makeMonitor(3, "Bottom", CGRect(x: 0, y: 0, width: 1000, height: 1000))
+        settings.monitors.arrangements = [MonitorArrangement(monitors: [
+            routing(1, "Top Left", 0, 0),
+            routing(2, "Top Right", 1, 0),
+            routing(3, "Bottom", 0, 1)
+        ])]
+
+        let controller = WMController(settings: settings)
+        controller.workspaceManager.applyMonitorConfigurationChange([topLeft, topRight, bottom])
+        let handler = controller.mouseWarpHandler
+        handler.activeDisplayBounds = { _ in .infinite }
+        var warped: [CGPoint] = []
+        handler.warpCursor = {
+            warped.append($0)
+            return .success
+        }
+        handler.postMouseMovedEvent = { _ in }
+        defer { handler.resetTransientState() }
+
+        handler.handleMouseWarpMoved(at: bottom.frame.center)
+        handler.handleMouseWarpMoved(at: CGPoint(x: 250, y: bottom.frame.maxY - 1))
+        handler.resetTransientState()
+        handler.handleMouseWarpMoved(at: bottom.frame.center)
+        handler.handleMouseWarpMoved(at: CGPoint(x: 750, y: bottom.frame.maxY - 1))
+        XCTAssertEqual(warped.count, 2)
+        let margin = CGFloat(settings.pointer.margin)
+        assertPoint(
+            warped[0],
+            ScreenCoordinateSpace.toWindowServer(point: MouseWarpGeometry.destinationPoint(
+                on: topLeft.frame,
+                entryEdge: .bottom,
+                ratio: 0.5,
+                margin: margin
+            ))
+        )
+        assertPoint(
+            warped[1],
+            ScreenCoordinateSpace.toWindowServer(point: MouseWarpGeometry.destinationPoint(
+                on: topRight.frame,
+                entryEdge: .bottom,
+                ratio: 0.5,
+                margin: margin
+            ))
+        )
+    }
+
     func testInheritedArrangementAndExactEditAgreeAcrossNavigationWarpAndContainment() {
         let fixture = makeFixture()
         let inherited = MonitorArrangement(monitors: [
