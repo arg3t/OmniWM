@@ -127,7 +127,7 @@ final class MonitorRoutingTests: XCTestCase {
         XCTAssertEqual(adjacent(from: c, .right, layout: layout, monitors: monitors, wrap: false), .edge)
     }
 
-    func testCursorRouteSplitsLowerDisplayBetweenTwoUpperDisplays() {
+    func testCursorRouteSplitsOnlyTheSharedVerticalEdge() {
         let topLeft = makeMonitor(1, "Top Left")
         let topRight = makeMonitor(2, "Top Right")
         let bottom = makeMonitor(3, "Bottom")
@@ -138,28 +138,65 @@ final class MonitorRoutingTests: XCTestCase {
             routing(3, "Bottom", 0, 1)
         ]
 
+        for (sourceRatio, target, targetRatio) in [
+            (CGFloat(0.125), topLeft, CGFloat(0.25)),
+            (CGFloat(0.375), topLeft, CGFloat(0.75)),
+            (CGFloat(0.625), topRight, CGFloat(0.25)),
+            (CGFloat(0.875), topRight, CGFloat(0.75))
+        ] {
+            assertCursorRoute(
+                MonitorRouting.cursorRoute(
+                    from: bottom,
+                    direction: .up,
+                    edgeRatio: sourceRatio,
+                    layout: layout,
+                    monitors: monitors
+                ),
+                target: target,
+                ratio: targetRatio
+            )
+        }
+
         assertCursorRoute(
             MonitorRouting.cursorRoute(
-                from: bottom,
-                direction: .up,
-                edgeRatio: 0.25,
+                from: topLeft,
+                direction: .down,
+                edgeRatio: 0.5,
                 layout: layout,
                 monitors: monitors
             ),
-            target: topLeft,
-            ratio: 0.5
+            target: bottom,
+            ratio: 0.25
         )
         assertCursorRoute(
             MonitorRouting.cursorRoute(
-                from: bottom,
-                direction: .up,
+                from: topRight,
+                direction: .down,
+                edgeRatio: 0.5,
+                layout: layout,
+                monitors: monitors
+            ),
+            target: bottom,
+            ratio: 0.75
+        )
+        assertCursorRoute(
+            MonitorRouting.cursorRoute(
+                from: topRight,
+                direction: .left,
                 edgeRatio: 0.75,
                 layout: layout,
                 monitors: monitors
             ),
-            target: topRight,
-            ratio: 0.5
+            target: topLeft,
+            ratio: 0.75
         )
+        assertCursorEdge(MonitorRouting.cursorRoute(
+            from: bottom,
+            direction: .right,
+            edgeRatio: 0.5,
+            layout: layout,
+            monitors: monitors
+        ))
     }
 
     func testSourceWithoutEntryFallsBackToMacOS() {
@@ -215,6 +252,16 @@ final class MonitorRoutingTests: XCTestCase {
         }
         XCTAssertEqual(route.monitor, target, file: file, line: line)
         XCTAssertEqual(route.destinationRatio, ratio, accuracy: 0.0001, file: file, line: line)
+    }
+
+    private func assertCursorEdge(
+        _ adjacency: MonitorRouting.CursorAdjacency,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard case .edge = adjacency else {
+            return XCTFail("Expected a cursor edge", file: file, line: line)
+        }
     }
 
     func testArrangementPrefersExactSetThenSmallestCoveringSetWithStableTies() {

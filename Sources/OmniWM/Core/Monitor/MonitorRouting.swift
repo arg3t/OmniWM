@@ -108,56 +108,46 @@ enum MonitorRouting {
         layout: [MonitorRoutingSettings],
         monitors: [Monitor]
     ) -> CursorAdjacency {
-        guard let candidates = cursorCandidates(
-            from: source,
-            direction: direction,
-            layout: layout,
-            monitors: monitors
-        ) else {
+        guard let placed = placedLayout(layout, for: monitors),
+              let origin = placed.first(where: { $0.monitor.id == source.id })
+        else {
             return .fallBackToMacOS
         }
-        guard !candidates.isEmpty else { return .edge }
+
+        let ordered = cursorCandidates(from: origin, direction: direction, placed: placed)
+            .sorted { $0.tangentCoordinate(for: direction) < $1.tangentCoordinate(for: direction) }
+        guard !ordered.isEmpty else { return .edge }
 
         let ratio = min(max(edgeRatio, 0), 1)
-        let ordered = candidates.sorted {
-            $0.tangentCoordinate(for: direction) < $1.tangentCoordinate(for: direction)
-        }
-        guard let first = ordered.first,
-              let last = ordered.last
-        else {
-            return .edge
-        }
-
-        let lower = first.tangentCoordinate(for: direction)
-        let upper = last.tangentCoordinate(for: direction)
-        let coordinate = lower + (ratio * (upper - lower))
-        guard let target = ordered.min(by: {
-            abs($0.tangentCoordinate(for: direction) - coordinate) <
-                abs($1.tangentCoordinate(for: direction) - coordinate)
-        }) else {
-            return .edge
+        if ordered.count > 1 {
+            let scaledRatio = ratio * CGFloat(ordered.count)
+            let targetIndex = min(Int(scaledRatio), ordered.count - 1)
+            return .route(CursorRoute(
+                monitor: ordered[targetIndex].monitor,
+                destinationRatio: scaledRatio - CGFloat(targetIndex)
+            ))
         }
 
-        guard ordered.count > 1,
-              let targetIndex = ordered.firstIndex(where: { $0.monitor.id == target.monitor.id })
+        let target = ordered[0]
+        let reverseDirection: Direction = switch direction {
+        case .left: .right
+        case .right: .left
+        case .up: .down
+        case .down: .up
+        }
+        let reverse = cursorCandidates(from: target, direction: reverseDirection, placed: placed)
+            .sorted {
+                $0.tangentCoordinate(for: reverseDirection) < $1.tangentCoordinate(for: reverseDirection)
+            }
+        guard reverse.count > 1,
+              let sourceIndex = reverse.firstIndex(where: { $0.monitor.id == source.id })
         else {
             return .route(CursorRoute(monitor: target.monitor, destinationRatio: ratio))
         }
 
-        let targetCoordinate = target.tangentCoordinate(for: direction)
-        let targetLower = targetIndex > 0
-            ? (ordered[targetIndex - 1].tangentCoordinate(for: direction) + targetCoordinate) / 2
-            : lower
-        let targetUpper = targetIndex < ordered.count - 1
-            ? (targetCoordinate + ordered[targetIndex + 1].tangentCoordinate(for: direction)) / 2
-            : upper
-        let targetRatio = targetUpper > targetLower
-            ? (coordinate - targetLower) / (targetUpper - targetLower)
-            : 0.5
-
         return .route(CursorRoute(
             monitor: target.monitor,
-            destinationRatio: min(max(targetRatio, 0), 1)
+            destinationRatio: (CGFloat(sourceIndex) + ratio) / CGFloat(reverse.count)
         ))
     }
 
@@ -181,12 +171,29 @@ enum MonitorRouting {
         layout: [MonitorRoutingSettings],
         monitors: [Monitor]
     ) -> [PlacedMonitor]? {
+        guard let placed = placedLayout(layout, for: monitors),
+              let origin = placed.first(where: { $0.monitor.id == source.id })
+        else {
+            return nil
+        }
+        return cursorCandidates(from: origin, direction: direction, placed: placed)
+    }
+
+    private static func placedLayout(
+        _ layout: [MonitorRoutingSettings],
+        for monitors: [Monitor]
+    ) -> [PlacedMonitor]? {
         guard let completeLayout = completeLayout(layout, for: monitors) else { return nil }
-        let placed = zip(monitors, completeLayout).map { monitor, settings in
+        return zip(monitors, completeLayout).map { monitor, settings in
             PlacedMonitor(monitor: monitor, column: settings.gridColumn, row: settings.gridRow)
         }
-        guard let origin = placed.first(where: { $0.monitor.id == source.id }) else { return nil }
+    }
 
+    private static func cursorCandidates(
+        from origin: PlacedMonitor,
+        direction: Direction,
+        placed: [PlacedMonitor]
+    ) -> [PlacedMonitor] {
         let candidates = placed.filter {
             $0.monitor.id != origin.monitor.id && $0.sharesCursorRoute(with: origin, direction: direction)
         }
@@ -264,16 +271,15 @@ private struct PlacedMonitor {
         let forwardOffset = offset(from: origin, direction: direction)
         guard forwardOffset > 0 else { return false }
 
-        let perpendicularOffset: Int
         switch direction {
         case .left,
              .right:
-            perpendicularOffset = abs(row - origin.row)
+            return row == origin.row
         case .up,
              .down:
-            perpendicularOffset = abs(column - origin.column)
+            let perpendicularOffset = abs(column - origin.column)
+            return perpendicularOffset == 0 || perpendicularOffset == forwardOffset
         }
-        return perpendicularOffset == 0 || perpendicularOffset == forwardOffset
     }
 
     func tangentCoordinate(for direction: Direction) -> CGFloat {
