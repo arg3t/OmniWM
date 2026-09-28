@@ -166,7 +166,7 @@ final class StackLayoutHandler {
     private func eligibleTokens(in workspaceId: WorkspaceDescriptor.ID) -> Set<WindowToken> {
         guard let controller else { return [] }
         return Set(controller.workspaceManager.tiledEntries(in: workspaceId).lazy.compactMap { entry in
-            controller.isManagedWindowSuppressedByMacOSHide(entry.token) ? nil : entry.token
+            controller.isManagedWindowSuppressedByMacOS(entry.token) ? nil : entry.token
         })
     }
 

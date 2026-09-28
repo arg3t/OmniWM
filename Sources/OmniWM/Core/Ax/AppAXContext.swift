@@ -197,6 +197,13 @@ final class AppAXContext {
         }
     }
 
+    func setWindowMinimized(_ minimized: Bool, for windowId: Int) {
+        if minimized {
+            cancelRetryRaise(for: windowId)
+        }
+        frameDelivery.setWindowMinimized(minimized, for: windowId)
+    }
+
     func makeFrameDrainExecution(drainId: UInt64, lane: AppAXFrameLane) -> AppAXFrameDrainExecution {
         AppAXFrameDrainExecution(
             writer: frameDelivery.writer(
@@ -209,6 +216,11 @@ final class AppAXContext {
             ),
             axApp: axApp
         )
+    }
+
+    func prepareForStopRestoration() {
+        cancelRetryRaise()
+        frameDelivery.shutdown()
     }
 
     func destroy() {

@@ -122,6 +122,7 @@ extension LayoutRefreshController {
         if plan.effects.subscribeManagedWindows {
             controller.axEventHandler.subscribeToManagedWindows()
         }
+        workspaceSwipe.warmPreviews()
     }
 }
 

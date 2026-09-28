@@ -39,7 +39,9 @@ extension AXManager {
         var framesByPID: [pid_t: [AXClosingFrameTarget]] = [:]
         framesByPID.reserveCapacity(min(frames.count, 8))
 
-        for frame in frames where !macOSHiddenAppPIDs.contains(frame.pid) {
+        for frame in frames where !macOSHiddenAppPIDs.contains(frame.pid)
+            && !isWindowMinimized(WindowToken(pid: frame.pid, windowId: frame.windowId))
+        {
             framesByPID[frame.pid, default: []].append(frame)
         }
 
@@ -62,11 +64,16 @@ extension AXManager {
     ) -> [AXFrameApplicationTarget] {
         guard needsFrameWriteFiltering
         else { return frames }
-        return frames.filter { isFrameAllowedToWrite($0) }
+        return frames.filter {
+            let allowed = isFrameAllowedToWrite($0)
+            if !allowed { workspaceFrameSettlement?.reject($0) }
+            return allowed
+        }
     }
 
     private func isFrameAllowedToWrite(_ target: AXFrameApplicationTarget) -> Bool {
         !macOSHiddenAppPIDs.contains(target.pid)
+            && !isWindowMinimized(WindowToken(pid: target.pid, windowId: target.windowId))
             && !excludeFrameWriteForNativeTitleBarDrag(
                 pid: target.pid,
                 windowId: target.windowId

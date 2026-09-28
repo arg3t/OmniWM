@@ -395,6 +395,173 @@ final class DwindleCommandRoutingTests: XCTestCase {
         }
     }
 
+    func testIPCRootPromotionReportsNoChangeForGroupedRootChild() throws {
+        let fixture = try makeFixture(groupedSource: true, includeTargetCandidate: false)
+        _ = addSourceTile(to: fixture, windowId: 31_208, direction: .down)
+        fixture.controller.workspaceManager.withEngineMutationScope(in: fixture.sourceWorkspaceId) {
+            _ = fixture.engine.activateWindowOutcome(fixture.activeToken, in: fixture.sourceWorkspaceId)
+        }
+        let root = try XCTUnwrap(fixture.engine.root(for: fixture.sourceWorkspaceId))
+        let group = try XCTUnwrap(fixture.engine.findNode(for: fixture.activeToken, in: fixture.sourceWorkspaceId))
+        XCTAssertTrue(group.parent === root)
+        XCTAssertEqual(fixture.engine.windowCount(in: fixture.sourceWorkspaceId), 3)
+        XCTAssertEqual(fixture.engine.tileCount(in: fixture.sourceWorkspaceId), 2)
+        let before = fixture.engine.tileSnapshot(for: fixture.activeToken, in: fixture.sourceWorkspaceId)
+        let children = root.children.map(\.id)
+        let blocker = blockLayoutRefresh(fixture)
+        defer { unblockLayoutRefresh(fixture.controller, blocker: blocker) }
+        fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+        let router = IPCCommandRouter(controller: fixture.controller, sessionToken: "test")
+
+        let result = router.handle(.dwindle(.moveToRoot))
+
+        XCTAssertEqual(result, .noChange)
+        XCTAssertEqual(root.children.map(\.id), children)
+        XCTAssertEqual(fixture.engine.tileSnapshot(for: fixture.activeToken, in: fixture.sourceWorkspaceId), before)
+        XCTAssertNil(fixture.controller.layoutRefreshController.layoutState.pendingRefresh)
+        let response = IPCApplicationBridge.response(for: result, id: "root-promotion", kind: .command)
+        XCTAssertEqual(response.status, .ignored)
+        XCTAssertEqual(response.code, .noChange)
+    }
+
+    func testIPCRootPromotionExecutesOnceForNestedTile() throws {
+        let fixture = try makeFixture(groupedSource: false, includeTargetCandidate: false)
+        _ = addSourceTile(to: fixture, windowId: 31_209)
+        let nestedToken = addSourceTile(to: fixture, windowId: 31_210, direction: .down)
+        let root = try XCTUnwrap(fixture.engine.root(for: fixture.sourceWorkspaceId))
+        let nested = try XCTUnwrap(fixture.engine.findNode(for: nestedToken, in: fixture.sourceWorkspaceId))
+        XCTAssertFalse(nested.parent === root)
+        let blocker = blockLayoutRefresh(fixture)
+        defer { unblockLayoutRefresh(fixture.controller, blocker: blocker) }
+        fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+        let router = IPCCommandRouter(controller: fixture.controller, sessionToken: "test")
+
+        XCTAssertEqual(router.handle(.dwindle(.moveToRoot)), .executed)
+        XCTAssertTrue(nested.parent === root)
+        XCTAssertEqual(fixture.controller.layoutRefreshController.layoutState.pendingRefresh?.reason, .layoutCommand)
+        fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+
+        XCTAssertEqual(router.handle(.dwindle(.moveToRoot)), .noChange)
+        XCTAssertNil(fixture.controller.layoutRefreshController.layoutState.pendingRefresh)
+    }
+
+    func testIPCSplitCommandsReportChangesAndSingleTileNoOps() throws {
+        for command in [IPCDwindleCommand.toggleSplit, .swapSplit] {
+            let fixture = try makeFixture(groupedSource: true, includeTargetCandidate: false)
+            let blocker = blockLayoutRefresh(fixture)
+            defer { unblockLayoutRefresh(fixture.controller, blocker: blocker) }
+            fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+            let router = IPCCommandRouter(controller: fixture.controller, sessionToken: "test")
+
+            XCTAssertEqual(router.handle(.dwindle(command)), .noChange)
+            XCTAssertNil(fixture.controller.layoutRefreshController.layoutState.pendingRefresh)
+
+            _ = addSourceTile(to: fixture, windowId: 31_211)
+            let root = try XCTUnwrap(fixture.engine.root(for: fixture.sourceWorkspaceId))
+            let orientation = try XCTUnwrap(root.splitOrientation)
+            let children = root.children.map(\.id)
+            fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+
+            XCTAssertEqual(router.handle(.dwindle(command)), .executed)
+            if command == .toggleSplit {
+                XCTAssertEqual(root.splitOrientation, orientation.perpendicular)
+                XCTAssertEqual(root.children.map(\.id), children)
+            } else {
+                XCTAssertEqual(root.splitOrientation, orientation)
+                XCTAssertEqual(root.children.map(\.id), Array(children.reversed()))
+            }
+            XCTAssertEqual(
+                fixture.controller.layoutRefreshController.layoutState.pendingRefresh?.reason,
+                .layoutCommand
+            )
+        }
+    }
+
+    func testIPCResizeCommandsReportChangesAndClampedNoOps() throws {
+        let commands: [IPCDwindleCommand] = [
+            .resize(axis: .horizontal, operation: .grow),
+            .resizeFocused(operation: .grow)
+        ]
+        for command in commands {
+            let fixture = try makeFixture(groupedSource: false, includeTargetCandidate: false)
+            _ = addSourceTile(to: fixture, windowId: 31_212)
+            fixture.controller.workspaceManager.withEngineMutationScope(in: fixture.sourceWorkspaceId) {
+                _ = fixture.engine.activateWindowOutcome(fixture.firstToken, in: fixture.sourceWorkspaceId)
+            }
+            let root = try XCTUnwrap(fixture.engine.root(for: fixture.sourceWorkspaceId))
+            let before = try XCTUnwrap(root.splitRatio)
+            let blocker = blockLayoutRefresh(fixture)
+            defer { unblockLayoutRefresh(fixture.controller, blocker: blocker) }
+            fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+            let router = IPCCommandRouter(controller: fixture.controller, sessionToken: "test")
+
+            XCTAssertEqual(router.handle(.dwindle(command)), .executed)
+            XCTAssertGreaterThan(try XCTUnwrap(root.splitRatio), before)
+            XCTAssertEqual(
+                fixture.controller.layoutRefreshController.layoutState.pendingRefresh?.reason,
+                .layoutCommand
+            )
+
+            fixture.controller.workspaceManager.withEngineMutationScope(in: fixture.sourceWorkspaceId) {
+                XCTAssertTrue(fixture.engine.resizeSelected(
+                    by: 100,
+                    orientation: .horizontal,
+                    in: fixture.sourceWorkspaceId
+                ))
+            }
+            let limit = root.splitRatio
+            fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+
+            XCTAssertEqual(router.handle(.dwindle(command)), .noChange)
+            XCTAssertEqual(root.splitRatio, limit)
+            XCTAssertNil(fixture.controller.layoutRefreshController.layoutState.pendingRefresh)
+        }
+    }
+
+    func testIPCPreselectionCommandsReportChangesWithoutRelayout() throws {
+        let fixture = try makeFixture(groupedSource: false, includeTargetCandidate: false)
+        let blocker = blockLayoutRefresh(fixture)
+        defer { unblockLayoutRefresh(fixture.controller, blocker: blocker) }
+        fixture.controller.layoutRefreshController.layoutState.pendingRefresh = nil
+        let router = IPCCommandRouter(controller: fixture.controller, sessionToken: "test")
+        let state = try XCTUnwrap(fixture.engine.existingState(for: fixture.sourceWorkspaceId))
+        let cases: [(IPCDwindleCommand, ExternalCommandResult, Direction?)] = [
+            (.preselectClear, .noChange, nil),
+            (.preselect(direction: .left), .executed, .left),
+            (.preselect(direction: .left), .noChange, .left),
+            (.preselectClear, .executed, nil),
+            (.preselectClear, .noChange, nil)
+        ]
+
+        for (command, expected, direction) in cases {
+            XCTAssertEqual(router.handle(.dwindle(command)), expected)
+            XCTAssertEqual(state.preselection, direction)
+            XCTAssertNil(fixture.controller.layoutRefreshController.layoutState.pendingRefresh)
+        }
+    }
+
+    private func addSourceTile(
+        to fixture: Fixture,
+        windowId: Int,
+        direction: Direction = .right
+    ) -> WindowToken {
+        let token = addWindow(
+            pid: 31_108,
+            windowId: windowId,
+            to: fixture.sourceWorkspaceId,
+            controller: fixture.controller
+        )
+        fixture.controller.workspaceManager.withEngineMutationScope(in: fixture.sourceWorkspaceId) {
+            XCTAssertTrue(fixture.engine.setPreselection(direction, in: fixture.sourceWorkspaceId))
+            _ = fixture.engine.addWindow(token: token, to: fixture.sourceWorkspaceId, activeWindowFrame: nil)
+            _ = fixture.engine.calculateLayout(
+                for: fixture.sourceWorkspaceId,
+                screen: fixture.sourceMonitor.visibleFrame
+            )
+        }
+        return token
+    }
+
     private func makeFixture(
         groupedSource: Bool,
         includeTargetCandidate: Bool

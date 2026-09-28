@@ -123,7 +123,7 @@ final class OverviewAnimator {
         controller?.presentProgress(progress)
     }
 
-    func track(cumulativeProgress: Double, timestamp: TimeInterval) {
+    func track(cumulativeProgress: Double, timestamp: TimeInterval, recognitionMovement: SwipeEvent? = nil) {
         guard var gesture, !gesture.released else { return }
         let origin: Double
         if let latched = gesture.origin {
@@ -131,8 +131,10 @@ final class OverviewAnimator {
         } else {
             origin = cumulativeProgress
             gesture.origin = origin
-            gesture.tracker.reset()
-            gesture.tracker.push(delta: 0, timestamp: timestamp)
+            gesture.tracker.seed(recognitionMovement, endingAt: timestamp)
+            TrackpadScrollTrace.record(.overviewMotion(
+                action: "recognition", progress: gesture.progress, velocity: gesture.tracker.velocity()
+            ))
         }
         let progress = OverviewNativeTransition.rubberBand(gesture.baseline + cumulativeProgress - origin)
         gesture.tracker.push(delta: progress - gesture.progress, timestamp: timestamp)
@@ -152,7 +154,12 @@ final class OverviewAnimator {
         }
         gesture.released = true
         self.gesture = gesture
-        return OverviewNativeTransition.releaseTarget(progress: gesture.progress, velocity: gesture.velocity)
+        let target = OverviewNativeTransition.releaseTarget(progress: gesture.progress, velocity: gesture.velocity)
+        TrackpadScrollTrace.record(.overviewMotion(
+            action: timestamp == nil ? "cancelled" : "released", progress: gesture.progress,
+            velocity: gesture.velocity, target: target
+        ))
+        return target
     }
 
     func targetWindow() -> WindowHandle? {

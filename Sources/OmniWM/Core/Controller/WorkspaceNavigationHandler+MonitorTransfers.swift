@@ -51,7 +51,7 @@ extension WorkspaceNavigationHandler {
         let anchorToken: WindowToken? = targetIsNiri ? Self.spatialNeighborToken(
             from: controller.preferredKeyboardFocusFrame(for: handle.id),
             candidates: controller.workspaceManager.tiledEntries(in: targetWorkspace.id)
-                .filter { !controller.isManagedWindowSuppressedByMacOSHide($0.token) }
+                .filter { !controller.isManagedWindowSuppressedByMacOS($0.token) }
                 .compactMap { entry in
                     controller.preferredKeyboardFocusFrame(for: entry.token).map { (token: entry.token, frame: $0) }
                 },
@@ -134,10 +134,18 @@ extension WorkspaceNavigationHandler {
         else {
             return nil
         }
+        return moveWorkspaceToMonitor(workspaceId, to: targetMonitor.id, force: force)
+    }
 
+    func moveWorkspaceToMonitor(
+        _ workspaceId: WorkspaceDescriptor.ID,
+        to targetMonitorId: Monitor.ID,
+        force: Bool
+    ) -> WorkspaceMonitorMoveOutcome? {
+        guard let controller else { return nil }
         let outcome = controller.workspaceManager.moveWorkspaceToMonitor(
             workspaceId,
-            to: targetMonitor.id,
+            to: targetMonitorId,
             force: force
         )
         controller.layoutRefreshController.commitWorkspaceMonitorTransition(outcome)

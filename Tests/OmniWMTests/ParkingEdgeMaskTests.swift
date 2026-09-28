@@ -13,7 +13,7 @@ final class ParkingEdgeMaskTests: XCTestCase {
             visibleFrame: visibleFrame
         )
 
-        let masks = SurfaceDerivation.deriveParkingEdgeMasks(monitors: [monitor])
+        let masks = SurfaceDerivation.deriveParkingEdgeMasks(monitors: [monitor], spaceTopology: .init())
         let left = try XCTUnwrap(masks.first { $0.key.side == .left })
         let right = try XCTUnwrap(masks.first { $0.key.side == .right })
 
@@ -36,7 +36,7 @@ final class ParkingEdgeMaskTests: XCTestCase {
             visibleFrame: CGRect(x: 1440, y: 100, width: 2560, height: 1415)
         )
 
-        let masks = SurfaceDerivation.deriveParkingEdgeMasks(monitors: [first, second])
+        let masks = SurfaceDerivation.deriveParkingEdgeMasks(monitors: [first, second], spaceTopology: .init())
 
         XCTAssertEqual(masks.count, 4)
         XCTAssertEqual(
@@ -57,7 +57,138 @@ final class ParkingEdgeMaskTests: XCTestCase {
             visibleFrame: CGRect(x: 0, y: 0, width: 1, height: 100)
         )
 
-        XCTAssertTrue(SurfaceDerivation.deriveParkingEdgeMasks(monitors: [monitor]).isEmpty)
+        XCTAssertTrue(SurfaceDerivation.deriveParkingEdgeMasks(monitors: [monitor], spaceTopology: .init()).isEmpty)
+    }
+
+    func testNativeFullscreenSuppressesOnlyItsDisplayAndDesktopRestoresGeometry() {
+        let first = makeMonitor(
+            displayId: 96,
+            frame: CGRect(x: 0, y: 0, width: 3840, height: 2160),
+            visibleFrame: CGRect(x: 55, y: 0, width: 3785, height: 2130)
+        )
+        let second = makeMonitor(
+            displayId: 97,
+            frame: CGRect(x: 3840, y: 0, width: 1440, height: 900),
+            visibleFrame: CGRect(x: 3840, y: 0, width: 1440, height: 875)
+        )
+        var topology = makeTopology(first: first, second: second, firstIsFullscreen: true)
+
+        let fullscreenMasks = SurfaceDerivation.deriveParkingEdgeMasks(
+            monitors: [first, second],
+            spaceTopology: topology
+        )
+
+        XCTAssertEqual(fullscreenMasks, [
+            DesiredParkingEdgeMask(
+                key: ParkingEdgeMaskKey(monitorId: second.id, side: .left),
+                frame: CGRect(x: 3840, y: 0, width: 1, height: 875)
+            ),
+            DesiredParkingEdgeMask(
+                key: ParkingEdgeMaskKey(monitorId: second.id, side: .right),
+                frame: CGRect(x: 5279, y: 0, width: 1, height: 875)
+            )
+        ])
+
+        topology.displays[0].currentSpaceId = 1
+        let desktopMasks = SurfaceDerivation.deriveParkingEdgeMasks(
+            monitors: [first, second],
+            spaceTopology: topology
+        )
+
+        XCTAssertEqual(desktopMasks, [
+            DesiredParkingEdgeMask(
+                key: ParkingEdgeMaskKey(monitorId: first.id, side: .left),
+                frame: CGRect(x: 55, y: 0, width: 1, height: 2130)
+            ),
+            DesiredParkingEdgeMask(
+                key: ParkingEdgeMaskKey(monitorId: first.id, side: .right),
+                frame: CGRect(x: 3839, y: 0, width: 1, height: 2130)
+            )
+        ] + fullscreenMasks)
+    }
+
+    func testUnknownDisplayTopologyKeepsMasks() {
+        let monitor = makeMonitor(
+            displayId: 98,
+            frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+            visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875)
+        )
+        let topology = SpaceTopology(
+            displays: [.init(displayIdentifier: "other-display", spaceIds: [1], currentSpaceId: 1)],
+            activeSpaceId: 1,
+            fullscreenSpaceIds: [1]
+        )
+
+        let masks = SurfaceDerivation.deriveParkingEdgeMasks(monitors: [monitor], spaceTopology: topology)
+
+        XCTAssertEqual(masks.count, 2)
+        XCTAssertTrue(masks.allSatisfy { $0.key.monitorId == monitor.id })
+    }
+
+    @MainActor
+    func testFullSceneRemovesAndRestoresMasksAfterActiveSpaceChanges() throws {
+        let controller = WindowAdmissionTestSupport.controller(prefix: "ParkingEdgeMaskTests")
+        controller.settings.workspaceBar.enabled = false
+        let first = makeMonitor(
+            displayId: 95_002,
+            frame: CGRect(x: 91_000, y: 92_000, width: 1440, height: 900),
+            visibleFrame: CGRect(x: 91_055, y: 92_000, width: 1385, height: 875)
+        )
+        let second = makeMonitor(
+            displayId: 95_003,
+            frame: CGRect(x: 93_000, y: 92_000, width: 1440, height: 900),
+            visibleFrame: CGRect(x: 93_000, y: 92_000, width: 1440, height: 875)
+        )
+        controller.workspaceManager.applyMonitorConfigurationChange([first, second])
+        controller.hasStartedServices = true
+        let reconciler = controller.surfaceReconciler
+        defer {
+            controller.hasStartedServices = false
+            reconciler.cleanup()
+        }
+        controller.workspaceManager.commitSpaceTopology(
+            makeTopology(first: first, second: second, firstIsFullscreen: false)
+        )
+        reconciler.noteWorldChanged()
+        reconciler.reconcileNow()
+        let desktopMasks = reconciler.appliedScene.parkingEdgeMasks
+        XCTAssertEqual(desktopMasks.count, 4)
+        let firstSurfaceId = "parking-edge-mask-95002-left"
+        let secondSurfaceId = "parking-edge-mask-95003-left"
+        let firstWindow = try XCTUnwrap(
+            SurfaceCoordinator.shared.visibleSurfaceInfos().first { $0.id == firstSurfaceId }?.window
+        )
+        let secondWindow = try XCTUnwrap(
+            SurfaceCoordinator.shared.visibleSurfaceInfos().first { $0.id == secondSurfaceId }?.window
+        )
+
+        controller.workspaceManager.commitSpaceTopology(
+            makeTopology(first: first, second: second, firstIsFullscreen: true)
+        )
+        controller.workspaceManager.recordReconcileEvent(.activeSpaceChanged(source: .service))
+        XCTAssertEqual(reconciler.pendingReconcileScope, .fullScene)
+        reconciler.reconcileNow()
+
+        XCTAssertEqual(reconciler.appliedScene.parkingEdgeMasks, desktopMasks.filter { $0.key.monitorId == second.id })
+        XCTAssertFalse(firstWindow.isVisible)
+        XCTAssertFalse(SurfaceCoordinator.shared.visibleSurfaceIDs().contains(firstSurfaceId))
+        XCTAssertTrue(
+            secondWindow === SurfaceCoordinator.shared.visibleSurfaceInfos()
+                .first { $0.id == secondSurfaceId }?.window
+        )
+
+        controller.workspaceManager.commitSpaceTopology(
+            makeTopology(first: first, second: second, firstIsFullscreen: false)
+        )
+        controller.workspaceManager.recordReconcileEvent(.activeSpaceChanged(source: .service))
+        reconciler.reconcileNow()
+
+        XCTAssertEqual(reconciler.appliedScene.parkingEdgeMasks, desktopMasks)
+        let restoredSurface = try XCTUnwrap(
+            SurfaceCoordinator.shared.visibleSurfaceInfos().first { $0.id == firstSurfaceId }
+        )
+        XCTAssertEqual(restoredSurface.frame, CGRect(x: 91_055, y: 92_000, width: 1, height: 875))
+        XCTAssertTrue(secondWindow.isVisible)
     }
 
     @MainActor
@@ -98,6 +229,21 @@ final class ParkingEdgeMaskTests: XCTestCase {
         XCTAssertFalse(SurfaceCoordinator.shared.visibleSurfaceIDs().contains(surfaceId))
         manager.removeAll()
         XCTAssertFalse(SurfaceCoordinator.shared.visibleSurfaceIDs().contains(surfaceId))
+    }
+
+    private func makeTopology(first: Monitor, second: Monitor, firstIsFullscreen: Bool) -> SpaceTopology {
+        SpaceTopology(
+            displays: [
+                .init(
+                    displayIdentifier: String(first.displayId),
+                    spaceIds: [1, 2],
+                    currentSpaceId: firstIsFullscreen ? 2 : 1
+                ),
+                .init(displayIdentifier: String(second.displayId), spaceIds: [3], currentSpaceId: 3)
+            ],
+            activeSpaceId: 3,
+            fullscreenSpaceIds: [2]
+        )
     }
 
     private func makeMonitor(

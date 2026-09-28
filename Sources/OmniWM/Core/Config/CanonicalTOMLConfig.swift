@@ -41,6 +41,7 @@ struct CanonicalTOMLConfig: Codable, Equatable {
         var updateChecksEnabled: Bool
         var ipcEnabled: Bool
         var animationsEnabled: Bool
+        var language: String?
     }
 
     struct Monitors: Codable, Equatable {
@@ -111,7 +112,8 @@ extension CanonicalTOMLConfig {
             preventSleepEnabled: export.preventSleepEnabled,
             updateChecksEnabled: export.updateChecksEnabled,
             ipcEnabled: export.ipcEnabled,
-            animationsEnabled: export.animationsEnabled
+            animationsEnabled: export.animationsEnabled,
+            language: export.language
         )
         focus = export.focus
         mouseWarp = export.mouseWarp
@@ -142,6 +144,7 @@ extension CanonicalTOMLConfig {
 
     func toSettingsExport() -> SettingsExport {
         var overview = overview
+        overview.enabled = overview.enabled ?? true
         overview.matchFocusBorder = overview.matchFocusBorder ?? true
         overview.invertScrollDirection = overview.invertScrollDirection ?? false
         overview.mouseScrollSpeed = overview.mouseScrollSpeed ?? 1
@@ -184,6 +187,7 @@ extension CanonicalTOMLConfig {
             statusBar: statusBar,
             hiddenBar: hiddenBar,
             animationsEnabled: general.animationsEnabled,
+            language: general.language,
             clipboard: clipboard,
             quakeTerminal: quakeTerminal,
             appearanceMode: appearance.mode,

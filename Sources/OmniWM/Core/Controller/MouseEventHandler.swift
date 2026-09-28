@@ -77,7 +77,7 @@ final class MouseEventHandler {
 
     func reconcileMultitouchSource() {
         guard let controller, controller.hasStartedServices else { return }
-        let shouldRun = controller.settings.gestures.trackpadGesturesEnabled
+        let shouldRun = controller.settings.effectiveTrackpadGesturesEnabled
         if shouldRun {
             if let multitouchSource {
                 if !multitouchSource.startLifecycle() {
@@ -146,6 +146,7 @@ final class MouseEventHandler {
     }
 
     func resetForMultitouchSourceReplacement() {
+        controller?.layoutRefreshController.workspaceSwipe.cancel(reason: "source-replaced")
         resetGestureState()
         state.workspaceSwipeTracker.reset()
         clearGestureLatches()
@@ -162,7 +163,9 @@ final class MouseEventHandler {
     func updateContactSessions(_ contacts: MultitouchContactSessions) {
         state.contactSessions = contacts
         state.consumedTrackpadSessions = state.consumedTrackpadSessions.filter {
-            contacts.contains($0.value)
+            let keep = contacts.contains($0.value)
+            if !keep { traceTrackpadOwnership(.retire, contact: $0.value) }
+            return keep
         }
     }
 
@@ -173,10 +176,24 @@ final class MouseEventHandler {
               state.contactSessions.contains(contact)
         else { return }
         state.consumedTrackpadSessions[senderId] = contact
+        traceTrackpadOwnership(.retain, contact: contact)
     }
 
     func clearConsumedTrackpadSessions() {
+        if TrackpadScrollTrace.shared.isActive {
+            for contact in state.consumedTrackpadSessions.values {
+                traceTrackpadOwnership(.clear, contact: contact)
+            }
+        }
         state.consumedTrackpadSessions.removeAll(keepingCapacity: true)
+    }
+
+    func recordTrackpadTraceSnapshot() {
+        guard TrackpadScrollTrace.shared.isActive else { return }
+        multitouchSource?.recordTraceSnapshot()
+        for contact in state.consumedTrackpadSessions.values {
+            traceTrackpadOwnership(.seed, contact: contact)
+        }
     }
 
     func consumesTrackpadSession(senderId: UInt64) -> Bool {

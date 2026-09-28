@@ -184,7 +184,7 @@ final class UpdateCoordinator: AppUpdateCoordinating {
             alert.alertStyle = .informational
             alert.messageText = title
             alert.informativeText = message
-            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: String(localized: "OK"))
             NSApplication.shared.activate(ignoringOtherApps: true)
             _ = alert.runModal()
         },
@@ -237,8 +237,8 @@ final class UpdateCoordinator: AppUpdateCoordinating {
         guard let currentVersion = currentVersionProvider() else {
             if source == .manual {
                 infoAlertPresenter(
-                    "Could Not Check for Updates",
-                    "OmniWM could not determine its current version."
+                    String(localized: "Could Not Check for Updates"),
+                    String(localized: "OmniWM could not determine its current version.")
                 )
             }
             return
@@ -258,7 +258,7 @@ final class UpdateCoordinator: AppUpdateCoordinating {
             }
 
             infoAlertPresenter(
-                "Could Not Check for Updates",
+                String(localized: "Could Not Check for Updates"),
                 error.localizedDescription
             )
         }
@@ -272,8 +272,8 @@ final class UpdateCoordinator: AppUpdateCoordinating {
         guard let latestVersion = release.version else {
             if source == .manual {
                 infoAlertPresenter(
-                    "Could Not Check for Updates",
-                    "GitHub returned an update tag OmniWM could not parse."
+                    String(localized: "Could Not Check for Updates"),
+                    String(localized: "GitHub returned an update tag OmniWM could not parse.")
                 )
             }
             return
@@ -283,8 +283,10 @@ final class UpdateCoordinator: AppUpdateCoordinating {
             knownAvailableRelease = nil
             if source == .manual {
                 infoAlertPresenter(
-                    "You're Up to Date",
-                    "OmniWM \(currentVersionStringProvider()) is already the latest available release."
+                    String(localized: "You're Up to Date"),
+                    String(
+                        localized: "OmniWM \(currentVersionStringProvider()) is already the latest available release."
+                    )
                 )
             }
             return
@@ -309,7 +311,7 @@ final class UpdateCoordinator: AppUpdateCoordinating {
         let latestVersion = release.version?.normalizedString ?? release.tagName
         let publishedDateText = release.publishedAt.map(Self.formattedDate)
         let releaseNotes = release.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "No release notes were provided for this release."
+            ? String(localized: "No release notes were provided for this release.")
             : release.body
 
         windowController.onWindowClosedWithoutAction = { [weak self] in
@@ -415,9 +417,9 @@ enum UpdateCoordinatorError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "GitHub returned an invalid response."
+            return String(localized: "GitHub returned an invalid response.")
         case let .badStatus(statusCode):
-            return "GitHub returned HTTP \(statusCode) while checking for updates."
+            return String(localized: "GitHub returned HTTP \(statusCode) while checking for updates.")
         }
     }
 }

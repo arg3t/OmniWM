@@ -110,6 +110,244 @@ final class DurableParkTests: XCTestCase {
         XCTAssertEqual(controller.workspaceManager.invariantViolationCountsDump(), "clean")
     }
 
+    func testLayoutTransientHidesReadEachWindowFrameAndPreserveItsSize() throws {
+        let controller = Self.controller()
+        let monitor = Self.monitor()
+        controller.workspaceManager.applyMonitorConfigurationChange([monitor])
+        let workspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
+        _ = controller.workspaceManager.focusWorkspace(named: "1")
+        controller.niriLayoutHandler.enableNiriLayout()
+
+        let pid: pid_t = 953_001
+        let tokens = (0 ..< 3).map { index in
+            let windowId = 953_101 + index
+            let token = controller.workspaceManager.addWindow(
+                AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId),
+                pid: pid, windowId: windowId, to: workspaceId
+            )
+            _ = controller.niriEngine?.addWindow(token: token, to: workspaceId, afterSelection: nil)
+            return token
+        }
+        let frames = Dictionary(uniqueKeysWithValues: tokens.enumerated().map { index, token in
+            (token, CGRect(x: 100, y: 16, width: 800 + index * 100, height: 600))
+        })
+        var reads: [WindowToken] = []
+        controller.layoutRefreshController.fastFrameProvider = { token, _ in
+            reads.append(token)
+            return frames[token]
+        }
+
+        var diff = WorkspaceLayoutDiff()
+        for token in tokens {
+            diff.visibilityChanges.append(.hide(token, side: .left))
+        }
+        XCTAssertTrue(
+            controller.layoutRefreshController.executeLayoutPlan(
+                Self.plan(workspaceId: workspaceId, monitor: monitor, diff: diff)
+            )
+        )
+
+        XCTAssertEqual(reads, tokens)
+        for token in tokens {
+            let frame = try XCTUnwrap(frames[token])
+            let parkOrigin = try XCTUnwrap(controller.layoutRefreshController.liveFrameHideOrigin(
+                for: frame,
+                monitor: monitor,
+                side: .left,
+                reason: .layoutTransient
+            ))
+            XCTAssertEqual(controller.axManager.skyLightLivePosition(for: token.windowId), parkOrigin)
+            XCTAssertEqual(CGRect(origin: parkOrigin, size: frame.size).intersection(monitor.frame).width, 1)
+            XCTAssertTrue(controller.axManager.pendingParkWindowIds.contains(token.windowId))
+        }
+    }
+
+    func testAnimationTickDiffSkipsPendingParksAlreadyMovedBySkyLight() throws {
+        let controller = Self.controller()
+        let monitor = Self.monitor()
+        controller.workspaceManager.applyMonitorConfigurationChange([monitor])
+        let workspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
+        _ = controller.workspaceManager.focusWorkspace(named: "1")
+        controller.niriLayoutHandler.enableNiriLayout()
+        let engine = try XCTUnwrap(controller.niriEngine)
+
+        let pid: pid_t = 954_001
+        let tokens = (0 ..< 8).map { index in
+            let windowId = 954_101 + index
+            let token = controller.workspaceManager.addWindow(
+                AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId),
+                pid: pid, windowId: windowId, to: workspaceId
+            )
+            _ = engine.addWindow(token: token, to: workspaceId, afterSelection: nil)
+            return token
+        }
+        let onscreenFrame = CGRect(x: 100, y: 16, width: 800, height: 600)
+        controller.layoutRefreshController.fastFrameProvider = { _, _ in onscreenFrame }
+        let handler = controller.layoutRefreshController.niriHandler
+        let viewportState = controller.workspaceManager.niriViewportState(for: workspaceId)
+        XCTAssertTrue(handler.applyFramesOnDemand(
+            wsId: workspaceId,
+            state: viewportState,
+            engine: engine,
+            monitor: monitor
+        ))
+
+        let parked = tokens.filter { controller.workspaceManager.hiddenState(for: $0) != nil }
+        XCTAssertGreaterThanOrEqual(parked.count, 2)
+        let movedBySkyLight = try XCTUnwrap(parked.first)
+        let awaitingMove = try XCTUnwrap(parked.last)
+        for token in parked {
+            controller.axManager.markParkPending(for: token.windowId, pid: pid)
+        }
+        controller.axManager.recordSkyLightMove(windowId: movedBySkyLight.windowId, origin: .zero)
+
+        let snapshot = try XCTUnwrap(handler.makeWorkspaceSnapshot(
+            workspaceId: workspaceId,
+            monitor: monitor,
+            options: .init(
+                viewportState: viewportState,
+                useScrollAnimationPath: true,
+                removalSeed: nil,
+                isActiveWorkspace: true
+            )
+        ))
+        let plan = handler.buildOnDemandLayoutPlan(
+            snapshot: snapshot,
+            engine: engine,
+            monitor: monitor,
+            animationTime: ProcessInfo.processInfo.systemUptime,
+            settlesAnimation: false
+        )
+        let rehidden = Set(plan.diff.visibilityChanges.compactMap { change -> WindowToken? in
+            guard case let .hide(token, _) = change else { return nil }
+            return token
+        })
+
+        XCTAssertFalse(rehidden.contains(movedBySkyLight))
+        XCTAssertTrue(rehidden.contains(awaitingMove))
+    }
+
+    func testLayoutParkedWindowThatGrowsIsReparkedWhenIdle() throws {
+        let fixture = try Self.layoutParkFixture(pid: 969_001, windowId: 969_101, isAnimationTick: false)
+        let grownFrame = CGRect(origin: fixture.parkedFrame.origin, size: CGSize(width: 1000, height: 600))
+
+        FrameApplyTrace.shared.beginCapture()
+        defer { FrameApplyTrace.shared.endCapture() }
+        let observedFrame = Self.deliverFrameChange(grownFrame, token: fixture.token, controller: fixture.controller)
+
+        let reparkedFrame = try Self.leftParkFrame(
+            for: observedFrame,
+            monitor: fixture.monitor,
+            reason: .layoutTransient,
+            controller: fixture.controller
+        )
+        XCTAssertEqual(reparkedFrame.minX, fixture.parkedFrame.minX - 200, accuracy: 0.01)
+        XCTAssertEqual(Self.settledParkEventCount(windowId: fixture.token.windowId, target: reparkedFrame), 1)
+    }
+
+    func testLayoutParkedWindowThatGrowsDuringScrollIsReparkedWithoutWaitingForSettle() throws {
+        let fixture = try Self.layoutParkFixture(pid: 969_002, windowId: 969_102, isAnimationTick: true)
+        XCTAssertNotNil(fixture.controller.axManager.skyLightLivePosition(for: fixture.token.windowId))
+        XCTAssertTrue(fixture.controller.layoutRefreshController.niriHandler.registerScrollAnimation(
+            fixture.workspaceId,
+            on: fixture.monitor.displayId
+        ))
+        let grownFrame = CGRect(origin: fixture.parkedFrame.origin, size: CGSize(width: 1000, height: 600))
+
+        FrameApplyTrace.shared.beginCapture()
+        defer { FrameApplyTrace.shared.endCapture() }
+        let observedFrame = Self.deliverFrameChange(grownFrame, token: fixture.token, controller: fixture.controller)
+
+        let reparkedFrame = try Self.leftParkFrame(
+            for: observedFrame,
+            monitor: fixture.monitor,
+            reason: .layoutTransient,
+            controller: fixture.controller
+        )
+        XCTAssertEqual(Self.settledParkEventCount(windowId: fixture.token.windowId, target: reparkedFrame), 1)
+        XCTAssertTrue(fixture.controller.niriLayoutHandler.hasScrollAnimation(for: fixture.workspaceId))
+    }
+
+    func testLayoutParkedWindowPositionOnlyFrameChangesDoNotRepark() throws {
+        let fixture = try Self.layoutParkFixture(pid: 969_003, windowId: 969_103, isAnimationTick: false)
+
+        FrameApplyTrace.shared.beginCapture()
+        defer { FrameApplyTrace.shared.endCapture() }
+        for frame in [fixture.parkedFrame, fixture.parkedFrame.offsetBy(dx: 120, dy: 0)] {
+            _ = Self.deliverFrameChange(frame, token: fixture.token, controller: fixture.controller)
+        }
+
+        XCTAssertFalse(FrameApplyTrace.shared.dump().split(separator: "\n").contains {
+            $0.contains("win=\(fixture.token.windowId) ") && $0.contains("outcome=sls-parked")
+        })
+    }
+
+    func testInactiveParkedWindowThatGrowsIsReparked() throws {
+        let controller = Self.controller()
+        let monitor = Self.monitor()
+        let rightMonitor = Monitor(
+            id: .init(displayId: 79),
+            displayId: 79,
+            frame: CGRect(x: 2560, y: 0, width: 1920, height: 1080),
+            visibleFrame: CGRect(x: 2560, y: 0, width: 1920, height: 1050),
+            hasNotch: false,
+            name: "Right"
+        )
+        controller.workspaceManager.applyMonitorConfigurationChange([monitor, rightMonitor])
+        _ = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
+        let inactiveWorkspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(
+            for: "2",
+            createIfMissing: true
+        ))
+        _ = controller.workspaceManager.focusWorkspace(named: "1")
+        XCTAssertEqual(controller.workspaceManager.monitor(for: inactiveWorkspaceId)?.id, monitor.id)
+        XCTAssertEqual(controller.layoutRefreshController.preferredHideSide(for: monitor), .left)
+
+        let pid: pid_t = 969_004
+        let windowId = 969_104
+        let axRef = AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId)
+        let token = controller.workspaceManager.addWindow(axRef, pid: pid, windowId: windowId, to: inactiveWorkspaceId)
+        let onscreenFrame = CGRect(x: 100, y: 16, width: 800, height: 600)
+        XCTAssertTrue(controller.layoutRefreshController.hideWindow(
+            try XCTUnwrap(controller.workspaceManager.entry(for: token)),
+            monitor: monitor,
+            side: .left,
+            reason: .workspaceInactive,
+            observedFrame: onscreenFrame
+        ))
+        let parkFrame = try Self.leftParkFrame(
+            for: onscreenFrame,
+            monitor: monitor,
+            reason: .workspaceInactive,
+            controller: controller
+        )
+        let request = try XCTUnwrap(
+            controller.axManager.prepareParkFrameApplications([
+                .init(pid: pid, window: axRef, frame: parkFrame)
+            ]).first
+        )
+        XCTAssertTrue(
+            controller.axManager.processParkFrameApplyResults([
+                WindowAdmissionTestSupport.successfulFrameResult(request: request)
+            ]).isEmpty
+        )
+        XCTAssertEqual(controller.axManager.verifiedParkFrame(for: windowId), parkFrame)
+        let grownFrame = CGRect(origin: parkFrame.origin, size: CGSize(width: 1000, height: 600))
+
+        FrameApplyTrace.shared.beginCapture()
+        defer { FrameApplyTrace.shared.endCapture() }
+        let observedFrame = Self.deliverFrameChange(grownFrame, token: token, controller: controller)
+
+        let reparkedFrame = try Self.leftParkFrame(
+            for: observedFrame,
+            monitor: monitor,
+            reason: .workspaceInactive,
+            controller: controller
+        )
+        XCTAssertEqual(reparkedFrame.minX, parkFrame.minX - 200, accuracy: 0.01)
+        XCTAssertEqual(Self.settledParkEventCount(windowId: windowId, target: reparkedFrame), 1)
+    }
+
     func testShowClearsPendingPark() throws {
         let controller = Self.controller()
         let monitor = Self.monitor()
@@ -1260,6 +1498,95 @@ final class DurableParkTests: XCTestCase {
                 windowSpace: [fixture.token.windowId: 1]
             )
         )
+    }
+
+    private struct LayoutParkFixture {
+        let controller: WMController
+        let monitor: Monitor
+        let workspaceId: WorkspaceDescriptor.ID
+        let token: WindowToken
+        let parkedFrame: CGRect
+    }
+
+    private static func layoutParkFixture(
+        pid: pid_t,
+        windowId: Int,
+        isAnimationTick: Bool
+    ) throws -> LayoutParkFixture {
+        let controller = Self.controller()
+        let monitor = Self.monitor()
+        controller.workspaceManager.applyMonitorConfigurationChange([monitor])
+        let workspaceId = try XCTUnwrap(controller.workspaceManager.workspaceId(for: "1", createIfMissing: true))
+        _ = controller.workspaceManager.focusWorkspace(named: "1")
+        controller.niriLayoutHandler.enableNiriLayout()
+        let token = controller.workspaceManager.addWindow(
+            AXWindowRef(element: AXUIElementCreateApplication(pid), windowId: windowId),
+            pid: pid, windowId: windowId, to: workspaceId
+        )
+        _ = controller.niriEngine?.addWindow(token: token, to: workspaceId, afterSelection: nil)
+        let onscreenFrame = CGRect(x: 100, y: 16, width: 800, height: 600)
+        controller.layoutRefreshController.fastFrameProvider = { _, _ in onscreenFrame }
+
+        var diff = WorkspaceLayoutDiff()
+        diff.visibilityChanges.append(.hide(token, side: .left))
+        XCTAssertTrue(controller.layoutRefreshController.executeLayoutPlan(
+            plan(workspaceId: workspaceId, monitor: monitor, diff: diff, isAnimationTick: isAnimationTick)
+        ))
+        XCTAssertEqual(controller.workspaceManager.hiddenState(for: token)?.offscreenSide, .left)
+
+        let parkedFrame = try leftParkFrame(
+            for: onscreenFrame,
+            monitor: monitor,
+            reason: .layoutTransient,
+            controller: controller
+        )
+        XCTAssertEqual(controller.axManager.parkTargetFrame(for: windowId), parkedFrame)
+        return LayoutParkFixture(
+            controller: controller,
+            monitor: monitor,
+            workspaceId: workspaceId,
+            token: token,
+            parkedFrame: parkedFrame
+        )
+    }
+
+    private static func leftParkFrame(
+        for frame: CGRect,
+        monitor: Monitor,
+        reason: LayoutRefreshController.HideReason,
+        controller: WMController
+    ) throws -> CGRect {
+        CGRect(
+            origin: try XCTUnwrap(controller.layoutRefreshController.liveFrameHideOrigin(
+                for: frame,
+                monitor: monitor,
+                side: .left,
+                reason: reason
+            )),
+            size: frame.size
+        )
+    }
+
+    private static func deliverFrameChange(
+        _ frame: CGRect,
+        token: WindowToken,
+        controller: WMController
+    ) -> CGRect {
+        let windowServerFrame = ScreenCoordinateSpace.toWindowServer(rect: frame)
+        controller.axEventHandler.windowInfoProvider = { windowId in
+            guard windowId == UInt32(token.windowId) else { return nil }
+            return WindowServerInfo(id: windowId, pid: token.pid, level: 0, frame: windowServerFrame)
+        }
+        controller.axEventHandler.handleFrameChanged(windowId: UInt32(token.windowId))
+        return ScreenCoordinateSpace.toAppKit(rect: windowServerFrame)
+    }
+
+    private static func settledParkEventCount(windowId: Int, target: CGRect) -> Int {
+        FrameApplyTrace.shared.dump().split(separator: "\n").filter {
+            $0.contains("win=\(windowId) ")
+                && $0.contains("outcome=sls-parked/settled")
+                && $0.contains("target=\(TraceFormat.rect(target))")
+        }.count
     }
 
     private static func hidePlan(

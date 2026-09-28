@@ -36,6 +36,7 @@ final class OverviewInputHandler {
         static let closeWindow = UInt16(kVK_ANSI_W)
     }
 
+    private var gestureScrollGate = OverviewScrollInput.GestureScrollGate()
     private weak var controller: OverviewController?
     private let projection: OverviewViewportProjection
     private let windowSession: OverviewWindowSession
@@ -197,7 +198,12 @@ final class OverviewInputHandler {
         }
     }
 
+    func beginGestureScrollSuppression() {
+        gestureScrollGate.awaitingNewGesture = true
+    }
+
     func reset() {
+        gestureScrollGate = OverviewScrollInput.GestureScrollGate()
         searchQuery = ""
     }
 }
@@ -367,6 +373,20 @@ extension OverviewInputHandler {
     }
 
     func handleScroll(_ event: OverviewScrollInput.Event, on monitorId: Monitor.ID) {
+        let suppressed = gestureScrollGate.consumes(event, state: state)
+        let tracing = TrackpadScrollTrace.shared.isActive
+        let before = tracing ? projection.layoutsByMonitor[monitorId]?.scrollOffset : nil
+        defer {
+            if tracing {
+                TrackpadScrollTrace.record(.overviewScroll(
+                    phase: event.phase.rawValue, momentum: event.momentumPhase.rawValue, precise: event.isPrecise,
+                    state: String(describing: state), suppressed: suppressed,
+                    before: before.map { Double($0) },
+                    after: projection.layoutsByMonitor[monitorId].map { Double($0.scrollOffset) }
+                ))
+            }
+        }
+        guard !suppressed else { return }
         let zoom = event.modifiers.contains([.option, .shift])
         let immediate = event.isPrecise || zoom
         if projection.handleScroll(event, on: monitorId) || immediate {

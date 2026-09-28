@@ -6,6 +6,21 @@ import XCTest
 
 @MainActor
 final class MultitouchFrameMailboxTests: XCTestCase {
+    func testPartialLiftPreservesLatestMovementForEachFingerCount() {
+        let mailbox = MultitouchFrameMailbox()
+        mailbox.activate(generation: 7)
+        mailbox.beginPerformanceCapture()
+        for (index, fingers) in [4, 4, 4, 3, 3, 2, 1, 0].enumerated() {
+            _ = offer(mailbox, touches: fingers, at: 1 + Double(index) / 100, generation: 7)
+        }
+
+        let deliveries = mailbox.take().deliveries
+        XCTAssertEqual(deliveries.map(\.kind), [.began, .changed, .changed, .changed, .changed, .ended])
+        XCTAssertEqual(deliveries.map(\.frame.touches.count), [4, 4, 3, 2, 1, 0])
+        XCTAssertEqual(deliveries.map(\.frame.timestamp), [1, 1.02, 1.04, 1.05, 1.06, 1.07])
+        XCTAssertEqual(mailbox.endPerformanceCapture()?.overwrittenChanges, 2)
+    }
+
     func testBurstPreservesTransitionsAndKeepsLatestChange() {
         let mailbox = MultitouchFrameMailbox(capacity: 6)
         mailbox.activate(generation: 7)

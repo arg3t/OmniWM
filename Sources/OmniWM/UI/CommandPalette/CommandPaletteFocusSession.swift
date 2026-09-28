@@ -35,24 +35,11 @@ final class CommandPaletteFocusSession {
     }
 
     static func resolveSummonAnchor(for wmController: WMController) -> CommandPaletteSummonAnchor? {
-        guard let activeWorkspace = wmController.activeWorkspace() else { return nil }
-
-        let anchorToken = if let focusedToken = wmController.workspaceManager.selectedManagedToken,
-                             let entry = wmController.workspaceManager.entry(for: focusedToken),
-                             entry.workspaceId == activeWorkspace.id
-        {
-            focusedToken
-        } else {
-            wmController.workspaceManager.lastFocusedToken(in: activeWorkspace.id)
-        }
-
-        guard let anchorToken,
-              let entry = wmController.workspaceManager.entry(for: anchorToken),
-              entry.workspaceId == activeWorkspace.id
+        guard let activeWorkspace = wmController.activeWorkspace(),
+              let anchorToken = wmController.summonAnchorToken(in: activeWorkspace.id)
         else {
             return nil
         }
-
         return .init(token: anchorToken, workspaceId: activeWorkspace.id)
     }
 
@@ -132,9 +119,11 @@ final class CommandPaletteFocusSession {
     }
 
     private func captureFocusTarget(for app: NSRunningApplication) -> CommandPaletteFocusTarget {
-        CommandPaletteFocusTarget(
+        let focusedWindow = focusedWindow(for: app)
+        return CommandPaletteFocusTarget(
             app: CommandPaletteAppSnapshot(app: app),
-            focusedWindow: focusedWindow(for: app)
+            focusedWindow: focusedWindow,
+            focusedWindowID: focusedWindow.flatMap(getWindowId(from:))
         )
     }
 
@@ -178,7 +167,7 @@ final class CommandPaletteFocusSession {
         }
 
         if let focusedWindow = target.focusedWindow,
-           let windowId = getWindowId(from: focusedWindow)
+           let windowId = target.focusedWindowID
         {
             if let wmController {
                 wmController.performWindowOrdering(windowId: Int(windowId))
@@ -199,6 +188,7 @@ final class CommandPaletteFocusSession {
 
     func clipboardPasteTarget() -> CommandPaletteClipboardPasteTarget? {
         guard let restoreFocusTarget,
+              let expectedWindowId = restoreFocusTarget.focusedWindowID,
               !restoreFocusTarget.app.isTerminated,
               restoreFocusTarget.app.bundleIdentifier != environment.ownBundleIdentifier(),
               environment.runningApplication(restoreFocusTarget.app.processIdentifier) != nil
@@ -207,7 +197,7 @@ final class CommandPaletteFocusSession {
         }
         return CommandPaletteClipboardPasteTarget(
             focusTarget: restoreFocusTarget,
-            expectedWindowId: restoreFocusTarget.focusedWindow.flatMap(getWindowId(from:))
+            expectedWindowId: expectedWindowId
         )
     }
 }

@@ -15,6 +15,10 @@ final class WorkspaceBarSettings {
         didSet { onChange?() }
     }
 
+    var hoverPreviewsEnabled = WorkspaceBarSettings.defaults.hoverPreviewsEnabled {
+        didSet { onChange?() }
+    }
+
     var showLabels = WorkspaceBarSettings.defaults.showLabels {
         didSet { onChange?() }
     }
@@ -152,6 +156,7 @@ final class WorkspaceBarSettings {
     func export() -> SettingsExport.WorkspaceBar {
         SettingsExport.WorkspaceBar(
             enabled: enabled,
+            hoverPreviewsEnabled: hoverPreviewsEnabled,
             showLabels: showLabels,
             showFloatingWindows: showFloatingWindows,
             windowLevel: windowLevel,
@@ -185,6 +190,7 @@ final class WorkspaceBarSettings {
 
     func applyIdentity(_ bar: SettingsExport.WorkspaceBar) {
         enabled = bar.enabled
+        hoverPreviewsEnabled = bar.hoverPreviewsEnabled
         showLabels = bar.showLabels
         showFloatingWindows = bar.showFloatingWindows
         windowLevel = bar.windowLevel
@@ -241,7 +247,7 @@ final class WorkspaceBarSettings {
 
     private func resolved(override: MonitorBarSettings?) -> ResolvedBarSettings {
         return ResolvedBarSettings(
-            enabled: override?.enabled ?? enabled,
+            enabled: enabled && (override?.enabled ?? true),
             showLabels: override?.showLabels ?? showLabels,
             showFloatingWindows: override?.showFloatingWindows ?? showFloatingWindows,
             deduplicateAppIcons: override?.deduplicateAppIcons ?? deduplicateAppIcons,

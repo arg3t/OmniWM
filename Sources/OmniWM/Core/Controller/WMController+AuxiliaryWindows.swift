@@ -75,6 +75,7 @@ extension WMController {
         } else {
             quakeTerminalController.cleanup()
         }
+        updateHotkeyBindings(settings.hotkeyBindings)
     }
 
     func toggleQuakeTerminal() {
@@ -140,16 +141,24 @@ extension WMController {
         syncClipboardHistoryService()
     }
 
-    func copyClipboardItem(id: UUID) async -> Bool {
-        await clipboardHistoryService.copyItemToPasteboard(id: id)
+    func copyClipboardItem(id: UUID, plainText: Bool = false) async -> Bool {
+        await clipboardHistoryService.copyItemToPasteboard(id: id, plainText: plainText)
+    }
+
+    func clipboardItemPreview(id: UUID) async -> ClipboardPalettePreview? {
+        await clipboardHistoryService.preview(id: id)
+    }
+
+    func setClipboardItemPinned(_ pinned: Bool, id: UUID) async -> [ClipboardPaletteItem] {
+        await clipboardHistoryService.setPinned(pinned, id: id)
     }
 
     func deleteClipboardItem(id: UUID) async -> [ClipboardPaletteItem] {
         await clipboardHistoryService.deleteItem(id: id)
     }
 
-    func clearClipboardHistory() async -> [ClipboardPaletteItem] {
-        await clipboardHistoryService.clearHistory()
+    func clearClipboardHistory() async throws -> [ClipboardPaletteItem] {
+        try await clipboardHistoryService.clearHistory()
     }
 
     func syncClipboardHistoryService() {
@@ -164,7 +173,8 @@ extension WMController {
         windowActionHandler.openMenuAnywhere()
     }
 
-    func navigateToCommandPaletteWindow(_ handle: WindowHandle) {
+    @discardableResult
+    func navigateToCommandPaletteWindow(_ handle: WindowHandle) -> Bool {
         windowActionHandler.navigateToExplicitlySelectedWindow(handle: handle)
     }
 
@@ -182,6 +192,16 @@ extension WMController {
 
     func toggleOverview() {
         windowActionHandler.toggleOverview()
+    }
+
+    func setOverviewEnabled(_ enabled: Bool) {
+        if settings.overview.enabled != enabled {
+            settings.overview.enabled = enabled
+        }
+        if !enabled {
+            windowActionHandlerStorage?.releaseOverviewController()
+        }
+        updateHotkeyBindings(settings.hotkeyBindings)
     }
 
     func handleOverviewHotkey(_ invocation: HotkeyInvocation) -> OverviewHotkeyDisposition {

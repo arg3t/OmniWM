@@ -27,7 +27,7 @@ final class OverviewThumbnailCapture {
         -> any OverviewPreviewStreamControl
 
     private enum Status {
-        case queued, starting, running, failed
+        case queued, starting, running, completed, failed
     }
 
     private final class Source {
@@ -50,6 +50,7 @@ final class OverviewThumbnailCapture {
 
     private struct CachedPreview {
         let frame: OverviewPreviewFrame
+        let token: WindowToken
         var lastRequestedUse: UInt64
     }
 
@@ -68,7 +69,9 @@ final class OverviewThumbnailCapture {
     private var previewCache: [WindowHandle: CachedPreview] = [:]
     private let maximumRetainedBytes: Int
     private let memoryPressure: any DispatchSourceMemoryPressure
+    private var stopsAfterFirstFrame = false
     var onPreview: @MainActor (WindowHandle, OverviewPreviewFrame?) -> Void = { _, _ in }
+    var onReadinessChange: @MainActor () -> Void = {}
 
     init(
         environment: OverviewEnvironment,
@@ -94,7 +97,12 @@ final class OverviewThumbnailCapture {
     }
 
     func preview(for handle: WindowHandle) -> OverviewPreviewFrame? {
-        previewCache[handle]?.frame
+        guard let cached = previewCache[handle], cached.token == handle.token else { return nil }
+        return cached.frame
+    }
+
+    var hasPendingFirstFrames: Bool {
+        sources.values.contains { !$0.published && $0.status != .failed && $0.status != .completed }
     }
 
     var cachedByteCount: Int {
@@ -104,20 +112,29 @@ final class OverviewThumbnailCapture {
     func reconcile(
         represented: Set<WindowHandle>,
         visible: [OverviewPreviewRequest],
-        prioritizing selectedHandle: WindowHandle? = nil
+        prioritizing selectedHandle: WindowHandle? = nil,
+        retainingUnrepresentedPreviews: Bool = false,
+        firstFrameOnly: Bool = false
     ) {
-        for handle in Array(previewCache.keys) where !represented.contains(handle) {
+        stopsAfterFirstFrame = firstFrameOnly
+        for handle in Array(previewCache.keys)
+            where (!retainingUnrepresentedPreviews && !represented.contains(handle))
+            || previewCache[handle]?.token != handle.token
+        {
             previewCache.removeValue(forKey: handle)
             onPreview(handle, nil)
         }
         let requests = collectRequests(represented: represented, visible: visible, selectedHandle: selectedHandle)
-        for (key, source) in sources where requests[key]?.token != source.request.token {
+        for (key, source) in sources where requests[key]?.token != source.request.token
+            || (!firstFrameOnly && source.status == .completed)
+        {
             retire(source)
             sources.removeValue(forKey: key)
         }
         guard !requests.isEmpty, hasCaptureAccess() else {
             for source in sources.values { retire(source) }
             sources.removeAll()
+            onReadinessChange()
             return
         }
         var added = false
@@ -134,9 +151,11 @@ final class OverviewThumbnailCapture {
             nextRequestedUse &+= 1
             source.lastRequestedUse = nextRequestedUse
             previewCache[source.request.handle]?.lastRequestedUse = nextRequestedUse
+            completeFirstFrame(source)
         }
         if added { environment.onThumbnailCaptureStarted() }
         startQueuedSources()
+        onReadinessChange()
     }
 
     func remove(handle: WindowHandle) {
@@ -145,6 +164,7 @@ final class OverviewThumbnailCapture {
         sourceOrder.removeAll { $0 == key }
         previewCache.removeValue(forKey: handle)
         onPreview(handle, nil)
+        onReadinessChange()
     }
 
     func clear() {
@@ -180,7 +200,7 @@ final class OverviewThumbnailCapture {
 
     private func retire(_ source: Source) {
         source.output?.invalidate()
-        if source.status == .starting {
+        if starts[source.id] != nil {
             starts[source.id]?.cancel()
         } else {
             source.control?.stop()
@@ -223,16 +243,17 @@ final class OverviewThumbnailCapture {
 
     private func finishStarting(_ source: Source, failed: Bool) {
         starts.removeValue(forKey: source.id)
-        if isCurrent(source), !failed, source.status != .failed {
+        if isCurrent(source), !failed, source.status != .failed, source.status != .completed {
             source.status = .running
             trace(.previewStarted, source: source)
         } else {
             source.output?.invalidate()
             source.control?.stop()
             source.control = nil
-            source.status = .failed
+            if source.status != .completed { source.status = .failed }
         }
         startQueuedSources()
+        if isCurrent(source) { onReadinessChange() }
     }
 
     private func isCurrent(_ source: Source) -> Bool {
@@ -245,20 +266,32 @@ final class OverviewThumbnailCapture {
               isCurrent(source), source.status != .failed,
               let frame = source.output?.take()
         else { return }
-        previewCache[source.request.handle] = CachedPreview(frame: frame, lastRequestedUse: source.lastRequestedUse)
+        previewCache[source.request.handle] = CachedPreview(
+            frame: frame, token: source.request.token, lastRequestedUse: source.lastRequestedUse
+        )
         if !source.published {
             source.published = true
             trace(.previewArrived, source: source)
         }
         onPreview(source.request.handle, frame)
+        completeFirstFrame(source)
+        onReadinessChange()
+    }
+
+    private func completeFirstFrame(_ source: Source) {
+        guard stopsAfterFirstFrame, source.published, source.status != .completed else { return }
+        retire(source)
+        source.status = .completed
     }
 
     private func streamFailed(key: ObjectIdentifier, sourceId: UInt64) {
         guard let source = sources[key], source.id == sourceId, isCurrent(source) else { return }
         source.output?.invalidate()
         source.status = .failed
+        if stopsAfterFirstFrame { source.control?.stop() }
         source.control = nil
         FallbackFiringRecorder.shared.note(.capture, "overviewStreamException")
+        onReadinessChange()
     }
 
     private func makeControl(

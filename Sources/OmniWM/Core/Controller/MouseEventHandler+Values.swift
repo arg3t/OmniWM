@@ -5,6 +5,38 @@ import AppKit
 import Foundation
 
 extension MouseEventHandler {
+    enum ScrollDecision: String, Sendable {
+        case inputSuppressed
+        case ownedSession
+        case activeGesture
+        case liftLatch
+        case momentumTail
+        case terminalTail
+        case freshPhase
+        case trackpadUnclaimed
+        case wheelDisabled
+        case overview
+        case ownWindow
+        case windowInteraction
+        case modifierMismatch
+        case wheelBinding
+        case wheelUnclaimed
+
+        var suppresses: Bool {
+            switch self {
+            case .ownedSession,
+                 .activeGesture,
+                 .liftLatch,
+                 .momentumTail,
+                 .terminalTail,
+                 .wheelBinding:
+                true
+            default:
+                false
+            }
+        }
+    }
+
     enum ViewportGestureTerminationDisposition {
         case settleLiveOffset
         case settleLiveOffsetWithoutRelayout

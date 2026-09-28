@@ -48,7 +48,9 @@ extension WorkspaceNavigationHandler {
         targetWorkspaceId: WorkspaceDescriptor.ID,
         monitor: Monitor?,
         startScrollAnimation: Bool,
-        affectedWorkspaces: Set<WorkspaceDescriptor.ID> = []
+        affectedWorkspaces: Set<WorkspaceDescriptor.ID> = [],
+        placementSubmitted: LayoutRefreshController.PostLayoutAction? = nil,
+        placementInvalidated: LayoutRefreshController.PostLayoutAction? = nil
     ) {
         guard let controller else { return }
         let handoff = resolveWorkspaceTransitionFocusHandoff(for: targetWorkspaceId)
@@ -71,8 +73,12 @@ extension WorkspaceNavigationHandler {
         controller.layoutRefreshController.commitWorkspaceTransition(
             affectedWorkspaces: affectedWorkspaces,
             reason: .workspaceTransition,
-            postLayout: handoffAction,
+            postLayout: {
+                handoffAction()
+                placementSubmitted?()
+            },
             postLayoutInvalidated: { [weak controller] in
+                placementInvalidated?()
                 guard let controller,
                       controller.intentLedger.newestFocusIntentId() == newestFocusIntentId,
                       controller.workspaceManager.isSeqEpochCurrent(focusEpochSeq, domains: .focus)

@@ -40,7 +40,7 @@ class BorderLayerPanel: NSPanel {
         ignoresMouseEvents = true
         hasShadow = false
         hidesOnDeactivate = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
         isMovableByWindowBackground = false
         isReleasedWhenClosed = false
         animationBehavior = .none

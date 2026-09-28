@@ -292,7 +292,9 @@ final class OverviewView: NSView {
                 deltaY: event.scrollingDeltaY,
                 modifiers: event.modifierFlags,
                 isPrecise: event.hasPreciseScrollingDeltas,
-                location: layerRenderer.layoutPoint(at: convert(event.locationInWindow, from: nil), layout: layout)
+                location: layerRenderer.layoutPoint(at: convert(event.locationInWindow, from: nil), layout: layout),
+                phase: event.phase,
+                momentumPhase: event.momentumPhase
             ))
         } else {
             onScroll?(OverviewScrollInput.dominantDelta(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY))

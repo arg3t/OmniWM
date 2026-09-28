@@ -119,11 +119,11 @@ extension NiriLayoutHandler {
               let sourceEntry = controller.workspaceManager.entry(for: handle.id),
               sourceEntry.workspaceId == workspaceId,
               controller.workspaceManager.handle(for: handle.id) === handle,
-              !controller.workspaceManager.isAppHidden(pid: sourceEntry.pid),
+              !controller.workspaceManager.isWindowSuppressedByMacOS(sourceEntry.token),
               let targetEntry = controller.workspaceManager.entry(for: targetHandle.id),
               targetEntry.workspaceId == workspaceId,
               controller.workspaceManager.handle(for: targetHandle.id) === targetHandle,
-              !controller.workspaceManager.isAppHidden(pid: targetEntry.pid)
+              !controller.workspaceManager.isWindowSuppressedByMacOS(targetEntry.token)
         else {
             return false
         }
@@ -165,7 +165,7 @@ extension NiriLayoutHandler {
               let entry = controller.workspaceManager.entry(for: handle.id),
               entry.workspaceId == workspaceId,
               controller.workspaceManager.handle(for: handle.id) === handle,
-              !controller.workspaceManager.isAppHidden(pid: entry.pid)
+              !controller.workspaceManager.isWindowSuppressedByMacOS(entry.token)
         else {
             return false
         }

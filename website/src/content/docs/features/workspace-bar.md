@@ -7,6 +7,8 @@ sidebar:
 
 The workspace bar is a centered floating island on each display. It shows a chip per workspace — with the workspace's name, emoji-friendly — and the icons of the apps open there.
 
+**Unreleased:** Builds from `main` can turn off window hover previews separately. Turning off the global Workspace Bar hides it on every monitor, while saved monitor overrides take effect again when it is re-enabled.
+
 ## Clicking the bar
 
 - Click a workspace chip to switch to that workspace.

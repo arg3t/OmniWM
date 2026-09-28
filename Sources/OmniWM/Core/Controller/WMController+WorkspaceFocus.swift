@@ -32,13 +32,13 @@ extension WMController {
         case .niri:
             if let engine = niriEngine {
                 let preferredTokenNode: NiriWindow? = preferredToken.flatMap { token in
-                    guard !isManagedWindowSuppressedByMacOSHide(token) else { return nil }
+                    guard !isManagedWindowSuppressedByMacOS(token) else { return nil }
                     return engine.findNode(for: token, in: workspaceId)
                 }
                 let preferredNode = preferredNodeId
                     .flatMap { engine.findNode(by: $0, in: workspaceId) as? NiriWindow }
                     .flatMap { node in
-                        isManagedWindowSuppressedByMacOSHide(node.token) ? nil : node
+                        isManagedWindowSuppressedByMacOS(node.token) ? nil : node
                     }
                 if let node = preferredTokenNode ?? preferredNode {
                     _ = workspaceManager.commitWorkspaceSelection(
@@ -52,7 +52,7 @@ extension WMController {
             }
         case .dwindle:
             if let token = dwindleEngine?.selectedNode(in: workspaceId)?.windowToken,
-               !isManagedWindowSuppressedByMacOSHide(token)
+               !isManagedWindowSuppressedByMacOS(token)
             {
                 _ = workspaceManager.commitWorkspaceSelection(
                     nodeId: nil,
@@ -63,7 +63,7 @@ extension WMController {
                 return
             }
             if let preferredToken,
-               !isManagedWindowSuppressedByMacOSHide(preferredToken),
+               !isManagedWindowSuppressedByMacOS(preferredToken),
                dwindleEngine?.findNode(for: preferredToken, in: workspaceId) != nil
             {
                 commitWorkspaceFocusCandidate(preferredToken, in: workspaceId)
@@ -71,7 +71,7 @@ extension WMController {
             }
         case .stack:
             if let preferredToken,
-               !isManagedWindowSuppressedByMacOSHide(preferredToken),
+               !isManagedWindowSuppressedByMacOS(preferredToken),
                stackEngine?.contains(preferredToken, in: workspaceId) == true
             {
                 commitWorkspaceFocusCandidate(preferredToken, in: workspaceId)
@@ -152,7 +152,7 @@ extension WMController {
 
         if let pendingFocusedToken = workspaceManager.pendingFocusedToken,
            workspaceManager.pendingFocusedWorkspaceId == workspaceId,
-           !isManagedWindowSuppressedByMacOSHide(pendingFocusedToken)
+           !isManagedWindowSuppressedByMacOS(pendingFocusedToken)
         {
             commitWorkspaceFocusCandidate(pendingFocusedToken, in: workspaceId)
             return
@@ -161,7 +161,7 @@ extension WMController {
         if let preferredRecoveryToken {
             if let entry = workspaceManager.entry(for: preferredRecoveryToken),
                entry.workspaceId == workspaceId,
-               !isManagedWindowSuppressedByMacOSHide(preferredRecoveryToken)
+               !isManagedWindowSuppressedByMacOS(preferredRecoveryToken)
             {
                 let routedDwindleFocus = commitWorkspaceFocusCandidate(
                     preferredRecoveryToken,
@@ -177,7 +177,7 @@ extension WMController {
 
         if let focusedToken = workspaceManager.selectedManagedToken,
            workspaceManager.entry(for: focusedToken)?.workspaceId == workspaceId,
-           !isManagedWindowSuppressedByMacOSHide(focusedToken)
+           !isManagedWindowSuppressedByMacOS(focusedToken)
         {
             commitWorkspaceFocusCandidate(focusedToken, in: workspaceId)
             return

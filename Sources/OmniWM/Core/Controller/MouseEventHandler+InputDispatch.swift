@@ -21,7 +21,8 @@ extension MouseEventHandler {
             workspaceSwipeEnabled: settings.gestures.workspaceSwipeEnabled && !isOverviewOpen,
             workspaceSwipeFingerCount: settings.gestures.workspaceSwipeFingerCount.rawValue,
             workspaceSwipeAxis: settings.gestures.workspaceSwipeAxis,
-            overviewAction: settings.gestures.overviewGestureEnabled ? overviewState.gestureAction : nil,
+            overviewAction: settings.overview.enabled && settings.gestures.overviewGestureEnabled
+                ? overviewState.gestureAction : nil,
             overviewFingerCount: settings.gestures.overviewGestureFingerCount.rawValue,
             windowMoveEnabled: settings.gestures.windowMoveEnabled && !isOverviewOpen,
             windowMoveFingerCount: settings.gestures.windowMoveFingerCount.rawValue,
@@ -154,6 +155,7 @@ extension MouseEventHandler {
         guard type == .otherMouseDown,
               let controller,
               OverviewInputSettingsValidation.mouseButtons.contains(button),
+              controller.settings.overview.enabled,
               controller.settings.overview.mouseButton == button,
               controller.settings.systemHyperTrigger.mouseButtonNumber != button
         else { return false }
@@ -233,7 +235,21 @@ extension MouseEventHandler {
         dispatchMouseUp(at: location, button: button)
     }
 
-    func receiveTapScrollWheel(_ payload: MouseScrollIntake) -> Bool {
+    func receiveTapScrollWheel(
+        _ payload: MouseScrollIntake,
+        traceMetadata: TrackpadScrollTrace.ScrollMetadata? = nil
+    ) -> Bool {
+        let traceSender = traceMetadata?.senderId ?? payload.senderId
+        let before = TrackpadScrollTrace.shared.isActive ? trackpadTraceState(senderId: traceSender) : nil
+        var decision = ScrollDecision.inputSuppressed
+        defer {
+            if let before {
+                TrackpadScrollTrace.record(.scroll(.init(
+                    payload: payload, metadata: traceMetadata, decision: decision,
+                    before: before, after: trackpadTraceState(senderId: traceSender)
+                )))
+            }
+        }
         guard !isInputSuppressed else {
             handleInputSuppressionBegan()
             return false
@@ -244,15 +260,17 @@ extension MouseEventHandler {
             drainTrackpadFrames(for: senderId, at: payload.location)
             if consumesTrackpadSession(senderId: senderId) {
                 recordDroppedTrackpadScroll()
+                decision = .ownedSession
                 return true
             }
         }
-        let suppress = shouldSuppressScroll(
+        decision = scrollDecision(
             at: payload.location,
             momentumPhase: payload.momentumPhase,
             phase: payload.phase,
             modifiers: payload.modifiers
         )
+        let suppress = decision.suppresses
         if suppress, MouseTrace.shared.isActive {
             MouseTrace.record("tap: scroll suppressed loc=\(TraceFormat.point(payload.location))")
         }
@@ -264,43 +282,58 @@ extension MouseEventHandler {
         return suppress
     }
 
-    private func shouldSuppressScroll(
+    private func scrollDecision(
         at location: CGPoint,
         momentumPhase: UInt32,
         phase: UInt32,
         modifiers: CGEventFlags
-    ) -> Bool {
+    ) -> ScrollDecision {
         let isTrackpad = momentumPhase != 0 || phase != 0
-        if isTrackpad { return suppressTrackpadScroll(momentumPhase: momentumPhase, phase: phase) }
+        if isTrackpad { return trackpadScrollDecision(momentumPhase: momentumPhase, phase: phase) }
 
         guard let controller, controller.isEnabled,
-              controller.settings.gestures.trackpadGesturesEnabled
+              controller.settings.effectiveTrackpadGesturesEnabled
         else {
-            return false
+            return .wheelDisabled
         }
-        if controller.isOverviewOpen() { return false }
-        if shouldBlockOwnWindowInput(at: location) { return false }
-        guard !state.isResizing, !state.isMoving else { return false }
-        guard controller.settings.gestures.scrollEnabled else { return false }
+        if controller.isOverviewOpen() { return .overview }
+        if shouldBlockOwnWindowInput(at: location) { return .ownWindow }
+        guard !state.isResizing, !state.isMoving else { return .windowInteraction }
+        guard controller.settings.gestures.scrollEnabled else { return .wheelDisabled }
         let requiredModifiers = controller.settings.gestures.scrollModifierKey.cgEventFlag
-        guard Self.mouseWheelModifiersMatch(modifiers, required: requiredModifiers) else { return false }
-        return resolveScrollContext(at: location) != nil
+        guard Self.mouseWheelModifiersMatch(modifiers, required: requiredModifiers) else { return .modifierMismatch }
+        return resolveScrollContext(at: location) != nil ? .wheelBinding : .wheelUnclaimed
     }
 
-    private func suppressTrackpadScroll(momentumPhase: UInt32, phase: UInt32) -> Bool {
-        if isTrackpadSwipeSessionActive { return true }
-        if state.consumeTrackpadScrollUntilAllTouchesLift { return true }
+    private func trackpadScrollDecision(momentumPhase: UInt32, phase: UInt32) -> ScrollDecision {
+        if isTrackpadSwipeSessionActive { return .activeGesture }
+        if state.consumeTrackpadScrollUntilAllTouchesLift { return .liftLatch }
         if state.suppressTrackpadMomentumScroll {
-            if momentumPhase != 0 { return true }
+            if momentumPhase != 0 { return .momentumTail }
             if phase == CGScrollPhase.ended.rawValue || phase == CGScrollPhase.cancelled.rawValue {
-                return true
+                return .terminalTail
             }
+            guard phase == CGScrollPhase.began.rawValue else { return .momentumTail }
             state.suppressTrackpadMomentumScroll = false
+            return .freshPhase
         }
-        return false
+        return .trackpadUnclaimed
     }
 
     func receiveTapGestureEvent(_ snapshot: GestureEventSnapshot) {
+        let before = TrackpadScrollTrace.shared.isActive
+            ? trackpadTraceState(senderId: snapshot.contactSession?.senderId) : nil
+        var processed = false
+        defer {
+            if let before {
+                TrackpadScrollTrace.record(.gesture(.init(
+                    timestamp: snapshot.timestamp, phase: snapshot.phaseRawValue,
+                    fingers: Self.activeTouchCount(in: snapshot.touches), contact: snapshot.contactSession,
+                    processed: processed, before: before,
+                    after: trackpadTraceState(senderId: snapshot.contactSession?.senderId)
+                )))
+            }
+        }
         guard !isInputSuppressed else {
             handleInputSuppressionBegan()
             return
@@ -311,6 +344,7 @@ extension MouseEventHandler {
         } else {
             flushQueuedTapEventsBeforeImmediateDispatch()
         }
+        processed = true
         handleGestureEvent(snapshot)
     }
 

@@ -81,24 +81,7 @@ final class RuntimeTraceCaptureCoordinator {
 
     init(
         diagnosticsDirectory: URL = OmniWMStoragePaths.live.diagnosticsDirectory,
-        recorders: [any RuntimeTraceRecording] = [
-            AppVisibilityTrace.shared,
-            NativeFullscreenPlaceholderTrace.shared,
-            NativeFullscreenPlaceholderTrace.motion,
-            WindowAdmissionTrace.shared,
-            AnimationTickTrace.shared,
-            MainThreadAXSpanTrace.shared,
-            RawAXNotificationTrace.shared,
-            FrameApplyTrace.shared,
-            NiriLayoutTrace.shared,
-            ParkVisibilityAudit.shared,
-            ScrollTickTrace.shared,
-            AXWriteLatencyTrace.shared,
-            OverviewFrameTrace.shared,
-            BorderOpMetricsRecorder.shared,
-            MouseTrace.shared,
-            InputTrace.shared
-        ],
+        recorders: [any RuntimeTraceRecording] = TraceCaptureResources.defaultRecorders,
         diagnosticsEventRecorder: DiagnosticsEventRecorder = .shared,
         processResourceProvider: @escaping () -> ProcessResourceSnapshot? = ProcessResourceSnapshot.capture,
         captureSleeper: @escaping @Sendable (Duration) async throws -> Void = { duration in

@@ -65,13 +65,24 @@ extension AXManager {
             let pid = target.pid
             let windowId = target.windowId
             if inactiveWorkspaceWindowIds.contains(windowId) {
+                workspaceFrameSettlement?.reject(target)
                 continue
+            }
+            let settlementObserver = options.isRetry ? nil : workspaceFrameSettlement?.observe(target)
+            let terminalObserver: FrameApplicationTerminalObserver?
+            if let settlementObserver {
+                terminalObserver = { result in
+                    options.terminalObserver?(result)
+                    settlementObserver(result)
+                }
+            } else {
+                terminalObserver = options.terminalObserver
             }
             let decision = frameLedger.prepareFrameApplication(
                 target,
                 isRetry: options.isRetry,
                 verify: options.verify,
-                terminalObserver: options.terminalObserver,
+                terminalObserver: terminalObserver,
                 traceOrigin: traceOrigin,
                 parentTraceRequestId: activeParentTraceRequestId
             )

@@ -21,7 +21,7 @@ final class HiddenBarPanelController {
     var onActivate: ((MenuBarItemKey) -> Void)?
     var isExemptWindow: ((NSWindow) -> Bool)?
 
-    private let model = HiddenBarPanelModel()
+    private var model: HiddenBarPanelModel?
     private var panel: NonactivatingPanel?
     private let dismissalMonitor = PanelDismissalMonitor()
     private var lastPlacement: HiddenBarPanelPlacement?
@@ -54,6 +54,14 @@ final class HiddenBarPanelController {
                 keyWindow.makeFirstResponder(firstResponder)
             }
         }
+    }
+
+    func teardown() {
+        dismiss()
+        model?.items = []
+        panel?.close()
+        panel = nil
+        model = nil
     }
 
     nonisolated static func panelAnchor(
@@ -129,14 +137,16 @@ final class HiddenBarPanelController {
     }
 
     private func show(placement: HiddenBarPanelPlacement, items: [HiddenBarGlyph]) {
-        let panel = self.panel ?? makePanel()
+        let model = self.model ?? HiddenBarPanelModel()
+        self.model = model
+        let panel = self.panel ?? makePanel(model: model)
         self.panel = panel
         if NSApp.keyWindow !== panel {
             previousKeyWindow = NSApp.keyWindow
             previousFirstResponder = NSApp.keyWindow?.firstResponder
         }
         lastPlacement = placement
-        applyContent(items: items, placement: placement, panel: panel)
+        applyContent(items: items, placement: placement, panel: panel, model: model)
 
         OwnedWindowRegistry.shared.register(
             panel,
@@ -160,16 +170,21 @@ final class HiddenBarPanelController {
             }
         )
         Task { @MainActor [weak self] in
-            self?.model.focusRequest &+= 1
+            self?.model?.focusRequest &+= 1
         }
     }
 
     func refresh(items: [HiddenBarGlyph]) {
-        guard isVisible, let panel, let lastPlacement else { return }
-        applyContent(items: items, placement: lastPlacement, panel: panel)
+        guard isVisible, let panel, let model, let lastPlacement else { return }
+        applyContent(items: items, placement: lastPlacement, panel: panel, model: model)
     }
 
-    private func applyContent(items: [HiddenBarGlyph], placement: HiddenBarPanelPlacement, panel: NonactivatingPanel) {
+    private func applyContent(
+        items: [HiddenBarGlyph],
+        placement: HiddenBarPanelPlacement,
+        panel: NonactivatingPanel,
+        model: HiddenBarPanelModel
+    ) {
         let maxContentWidth = placement.visibleFrame.width - 16 - Self.padding * 2
         model.maxContentWidth = maxContentWidth
         model.items = items
@@ -187,7 +202,7 @@ final class HiddenBarPanelController {
         )
     }
 
-    private func makePanel() -> NonactivatingPanel {
+    private func makePanel(model: HiddenBarPanelModel) -> NonactivatingPanel {
         let panel = NonactivatingPanel(
             contentRect: CGRect(origin: .zero, size: CGSize(width: 200, height: 60)),
             styleMask: [.borderless, .nonactivatingPanel],

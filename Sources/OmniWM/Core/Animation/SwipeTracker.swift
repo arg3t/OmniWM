@@ -22,6 +22,14 @@ final class SwipeTracker {
         position = 0
     }
 
+    func seed(_ movement: SwipeEvent?, endingAt timestamp: TimeInterval) {
+        reset()
+        if let movement, movement.timestamp < timestamp, timestamp.isFinite {
+            push(delta: movement.delta, timestamp: movement.timestamp)
+        }
+        push(delta: 0, timestamp: timestamp)
+    }
+
     @discardableResult
     func push(delta: Double, timestamp: TimeInterval) -> Bool {
         guard delta.isFinite, timestamp.isFinite else { return false }

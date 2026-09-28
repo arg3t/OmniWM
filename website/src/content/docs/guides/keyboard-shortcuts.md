@@ -1,6 +1,6 @@
 ---
 title: Keyboard Shortcuts
-description: Every default OmniWM hotkey, the Shared/Niri/Dwindle layout legend, and how the Hyper modifier works.
+description: Every default OmniWM hotkey, the layout legend, Hyper setup, and shortcut conflict troubleshooting.
 sidebar:
   order: 5
 ---
@@ -11,7 +11,13 @@ All shortcuts are customizable in **Settings > Hotkeys**. `Hyper` is the literal
 
 Optionally pick a **System Hyper Trigger** — a single key (Caps Lock, F13–F20, or a left- or right-side modifier) or an extra mouse button that acts as `Hyper` while held (this needs the Input Monitoring permission). Leave the trigger as `None` if you already produce `Hyper` another way, such as a Karabiner Elements remap.
 
-Settings hides advanced actions from the shortcut list by default. Turn on `Include Advanced Commands` in Settings > Hotkeys to see and bind them; the tables below include both standard and advanced actions.
+Settings > Hotkeys lists all actions that can be assigned a shortcut, including advanced actions.
+
+## When a shortcut does not fire
+
+Confirm the binding and any registration warning in **Settings > Hotkeys**, then check **Settings > Troubleshooting** for related diagnostics. If skhd, Raycast, or another shortcut utility is still running with the same binding, stop it or reassign the conflicting shortcut before editing `settings.toml`.
+
+[HotkeyClash](https://github.com/Wunderlandmedia/HotkeyClash) can inspect shortcuts across supported apps, config files, and macOS. It does not parse Raycast settings.
 
 ## Layout legend
 

@@ -19,16 +19,20 @@ enum SurfaceDerivation {
             tabRailStyle: world.tabRailStyle,
             placeholders: world.nativeFullscreenPlaceholders(),
             bars: world.barSurfaces(),
-            parkingEdgeMasks: deriveParkingEdgeMasks(monitors: world.monitors)
+            parkingEdgeMasks: deriveParkingEdgeMasks(monitors: world.monitors, spaceTopology: world.spaceTopology)
         )
     }
 
-    static func deriveParkingEdgeMasks(monitors: [Monitor]) -> [DesiredParkingEdgeMask] {
+    static func deriveParkingEdgeMasks(
+        monitors: [Monitor],
+        spaceTopology: SpaceTopology
+    ) -> [DesiredParkingEdgeMask] {
         let width: CGFloat = 1
         var masks: [DesiredParkingEdgeMask] = []
         masks.reserveCapacity(monitors.count * 2)
 
         for monitor in monitors {
+            guard spaceTopology.isDisplayShowingFullscreenSpace(on: monitor) != true else { continue }
             let frame = monitor.visibleFrame
             guard !frame.isNull,
                   !frame.isInfinite,

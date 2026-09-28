@@ -130,6 +130,23 @@ OmniWM is a free, open-source, Developer ID-signed and Apple-notarized tiling wi
       <sub>@MuhammadKh</sub>
     </td>
     <td align="center" valign="top">
+      <a href="https://github.com/liip">
+        <img src="https://avatars.githubusercontent.com/u/166102?v=4" width="72" alt="Liip">
+      </a>
+      <br>
+      <a href="https://github.com/liip"><strong>Liip</strong></a>
+      <br>
+      <sub>━━━━━━━━</sub>
+      <br>
+      <a href="https://github.com/Jonathanm10" title="Jonathan Macheret">
+        <img src="https://github.com/Jonathanm10.png?size=96" width="72" alt="Jonathan Macheret">
+      </a>
+      <br>
+      <a href="https://github.com/Jonathanm10"><strong>Jonathan Macheret</strong></a>
+      <br>
+      <sub>@Jonathanm10</sub>
+    </td>
+    <td align="center" valign="top">
       <a href="https://luxor.tech">
         <img src="https://github.com/LuxorLabs.png?size=96" width="72" alt="Luxor Labs">
       </a>
@@ -404,6 +421,9 @@ OmniWM is a free, open-source, Developer ID-signed and Apple-notarized tiling wi
       <a href="https://github.com/jthomaschewski" title="Janek Thomaschewski">
         <img src="https://github.com/jthomaschewski.png?size=96" width="72" alt="Janek Thomaschewski">
       </a>
+      <a href="https://github.com/Jonathanm10" title="Jonathan Macheret">
+        <img src="https://github.com/Jonathanm10.png?size=96" width="72" alt="Jonathan Macheret">
+      </a>
       <a href="https://github.com/jcardama" title="Jose Cardama">
         <img src="https://github.com/jcardama.png?size=96" width="72" alt="Jose Cardama">
       </a>
@@ -445,6 +465,9 @@ OmniWM is a free, open-source, Developer ID-signed and Apple-notarized tiling wi
       </a>
       <a href="https://github.com/georgebastille" title="Rich Hanes">
         <img src="https://github.com/georgebastille.png?size=96" width="72" alt="Rich Hanes">
+      </a>
+      <a href="https://github.com/rickythefox" title="Richard Ginzburg">
+        <img src="https://github.com/rickythefox.png?size=96" width="72" alt="Richard Ginzburg">
       </a>
       <a href="https://github.com/1Pio" title="rPio">
         <img src="https://github.com/1Pio.png?size=96" width="72" alt="rPio">
@@ -498,7 +521,7 @@ OmniWM is a free, open-source, Developer ID-signed and Apple-notarized tiling wi
 - Local IPC and `omniwmctl` automation
 - Scratchpads and sticky windows for any app
 - Overview
-- Unified command palette for windows and app menus
+- Unified command palette for windows, app menus, clipboard history, OmniWM commands, applications, and files
 - Menu Anywhere
 - Niri-style tabbed containers and Dwindle tile groups
 - Niri-style scrolling and Hyprland-style Dwindle BSP layouts
@@ -686,7 +709,9 @@ Layout legend:
 - `Niri` works only when the active workspace uses the Niri layout.
 - `Dwindle` works only when the active workspace uses the Dwindle layout.
 
-Settings hides advanced actions from the shortcut list by default. Turn on `Include Advanced Commands` in Settings > Hotkeys to see and bind them; the tables below include both standard and advanced actions.
+Settings > Hotkeys lists all actions that can be assigned a shortcut, including advanced actions.
+
+**If a shortcut does not fire:** Check **Settings > Hotkeys** and **Settings > Troubleshooting** for registration issues, then look for another hotkey tool, such as skhd or Raycast, still running with the same binding. [HotkeyClash](https://github.com/Wunderlandmedia/HotkeyClash) can help inspect possible conflicts in running apps, supported config files, and macOS shortcuts. It does not parse Raycast's shortcut settings. Disable or reassign the conflicting binding and retry before editing `settings.toml`.
 
 #### Workspace
 
@@ -864,20 +889,25 @@ Quake Terminal loads Ghostty's normal configuration files and their included fil
 
 #### Command Palette
 
-Quickly search windows, app menus, or clipboard history from one shared palette:
+Quickly search windows, app menus, clipboard history, OmniWM commands, applications, or files from one shared palette:
+
 - Open it from the global shortcut shown in `Keyboard Shortcuts`
 - Use `Tab` / `Shift + Tab` to cycle forward or backward through the available modes
-- Use `Cmd + 1` for `Windows`, `Cmd + 2` for `Menu`, and `Cmd + 3` for `Clipboard`
-- Type to search by substring; window-title matches rank first, followed by app-name and workspace-name matches
+- Use `Cmd + 1` for `Windows`, `Cmd + 2` for `Menu`, `Cmd + 3` for `Clipboard`, `Cmd + 4` for `Commands`, `Cmd + 5` for `Applications`, and `Cmd + 6` for `Files`
+- Type to search; window-title matches rank first, followed by app-name and workspace-name matches in Windows mode
 - Menu results always show keyboard shortcuts when available
+- Commands are grouped by category until you search; each row shows its layout and current shortcut, including unassigned commands
+- In Commands mode, `Enter` runs the selected command; commands for another layout stay visible but cannot be selected
 - `Up` / `Down` move the selection
 - `Enter` activates the selected result
 - Windows from macOS-hidden apps remain searchable with a Hidden badge; selecting one unhides its app and focuses that exact window
 - In Windows mode, `Shift + Enter` summons the selected window to the right when available
-- In Clipboard mode, `Enter` copies the selected entry and pastes it into the previous app when that target is still available; `Shift + Enter` copies without pasting
+- In Clipboard mode, `Enter` copies the selected entry; `Shift + Enter` pastes it into the previous app when that target is still available
+- Applications and Files open in a browse grid; switch either mode to a list from the view menu
+- Files shows recent documents before typing, supports type filters, and can reveal a selection in Finder with `Cmd + Enter`
 - `Escape` dismisses the palette
 
-Clipboard history starts disabled. Open Clipboard mode (`Cmd + 3`) and click **Enable**, or set `clipboard.historyEnabled = true` in `settings.toml`. History retains supported text, rich text, HTML, images, and file references within the configured limits; items marked concealed, transient, or autogenerated, including recognized password-manager markers, are skipped. Each row has Copy and Delete actions, and the trash button clears the history. See the [command palette guide](https://omniwm.app/features/command-palette/#clipboard-history) for storage details.
+Clipboard history starts disabled. Open Clipboard mode (`Cmd + 3`) and click **Enable**, or set `clipboard.historyEnabled = true` in `settings.toml`. History retains text, rich text, HTML, images, file references, and safe native formats within the configured limits; concealed, transient, and recognized password-manager content is skipped. A selected item has a preview, each row can be pasted or pinned, and Clear removes unpinned history. See the [command palette guide](https://omniwm.app/features/command-palette/#clipboard-history) for storage details.
 
 #### Menu Anywhere
 

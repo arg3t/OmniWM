@@ -77,7 +77,7 @@ final class MultitouchFrameMailbox: @unchecked Sendable {
     private struct State {
         var generation: UInt = 0
         var touchingSlots: UInt64 = 0
-        var physicalTouchingSlots: UInt64 = 0
+        var physicalFingerCounts = InlineArray<64, Int>(repeating: 0)
         var contacts = MultitouchContactSessions()
         var contactsChanged = false
         var ownerSlot: Int?
@@ -99,12 +99,13 @@ final class MultitouchFrameMailbox: @unchecked Sendable {
         state.withLock { value in
             value.generation = generation
             value.touchingSlots = 0
-            value.physicalTouchingSlots = 0
+            value.physicalFingerCounts = InlineArray(repeating: 0)
             value.contacts = MultitouchContactSessions(generation: generation)
             value.contactsChanged = true
             value.ownerSlot = nil
             value.drainScheduled = false
             value.pending.removeAll(keepingCapacity: true)
+            TrackpadScrollTrace.record(.reset(generation: generation))
         }
     }
 
@@ -123,16 +124,22 @@ final class MultitouchFrameMailbox: @unchecked Sendable {
                 }
                 return false
             }
-            let hasTouches = !frame.touches.isEmpty
-            let slotMask: UInt64 = 1 << UInt64(slot)
-            if hasTouches {
-                if value.physicalTouchingSlots & slotMask == 0 {
-                    value.contacts.sessions[slot] += 1
-                    value.contactsChanged = true
-                }
-                value.physicalTouchingSlots |= slotMask
-            } else {
-                value.physicalTouchingSlots &= ~slotMask
+            let fingerCount = frame.touches.count
+            let previousFingerCount = value.physicalFingerCounts[slot]
+            let hasTouches = fingerCount > 0
+            if hasTouches, previousFingerCount == 0 {
+                value.contacts.sessions[slot] += 1
+                value.contactsChanged = true
+            }
+            value.physicalFingerCounts[slot] = fingerCount
+            if fingerCount != previousFingerCount {
+                TrackpadScrollTrace.record(.physical(
+                    generation: generation,
+                    slot: slot,
+                    session: value.contacts.sessions[slot],
+                    timestamp: frame.timestamp,
+                    fingers: fingerCount
+                ))
             }
             var scheduled = false
             if let owner = value.ownerSlot, hasTouches,
@@ -183,7 +190,7 @@ final class MultitouchFrameMailbox: @unchecked Sendable {
             return enqueue(.ended, frame, generation: generation, slot: slot, in: &value)
         }
         value.ownerTimestamp = frame.timestamp
-        if value.pending.last?.kind == .changed {
+        if value.pending.last?.kind == .changed, value.pending.last?.frame.touches.count == frame.touches.count {
             value.pending[value.pending.count - 1] = Delivery(
                 frame: frame,
                 generation: generation,
@@ -258,6 +265,22 @@ final class MultitouchFrameMailbox: @unchecked Sendable {
 
     var pendingCount: Int {
         state.withLock { $0.pending.count }
+    }
+
+    func recordTraceSnapshot(slotCount: Int) {
+        guard TrackpadScrollTrace.shared.isActive else { return }
+        state.withLock { value in
+            guard value.generation != 0 else { return }
+            for slot in 0 ..< min(max(slotCount, 0), value.physicalFingerCounts.count) {
+                TrackpadScrollTrace.record(.physical(
+                    generation: value.generation,
+                    slot: slot,
+                    session: value.contacts.sessions[slot],
+                    timestamp: nil,
+                    fingers: value.physicalFingerCounts[slot]
+                ))
+            }
+        }
     }
 
     func recordCursorSample() {

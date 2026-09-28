@@ -79,14 +79,20 @@ extension OverviewController {
         case .opening:
             break
         }
+        input.beginGestureScrollSuppression()
         animator.beginTracking()
         return true
     }
 
-    func updateInteractiveTransition(cumulativeUnits: Double, timestamp: TimeInterval) {
+    func updateInteractiveTransition(
+        cumulativeUnits: Double, timestamp: TimeInterval, recognitionMovement: SwipeEvent? = nil
+    ) {
         animator?.track(
             cumulativeProgress: TrackpadGestureIntent.overviewProgress(units: cumulativeUnits),
-            timestamp: timestamp
+            timestamp: timestamp,
+            recognitionMovement: recognitionMovement.map {
+                SwipeEvent(delta: TrackpadGestureIntent.overviewProgress(units: $0.delta), timestamp: $0.timestamp)
+            }
         )
     }
 

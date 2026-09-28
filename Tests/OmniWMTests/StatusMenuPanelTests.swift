@@ -7,6 +7,24 @@ import XCTest
 
 @MainActor
 final class StatusMenuPanelTests: XCTestCase {
+    func testQuitLeavesMenuActionTaskBeforeEnteringAppKitTermination() async {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let terminated = expectation(description: "Quit dispatched from the application run loop")
+        let dismiss = StatusMenuDismissAction(dismiss: {})
+        var menuActionReturned = false
+
+        dismiss {
+            fixture.model.quit {
+                XCTAssertTrue(menuActionReturned)
+                terminated.fulfill()
+            }
+            menuActionReturned = true
+        }
+
+        await fulfillment(of: [terminated], timeout: 2)
+    }
+
     func testContentIsCappedToScreenAndAnchoredAtEdges() {
         let screen = CGRect(x: -1280, y: 100, width: 1280, height: 700)
         let size = StatusMenuGeometry.panelSize(

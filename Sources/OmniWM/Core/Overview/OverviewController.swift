@@ -414,6 +414,7 @@ extension OverviewController {
             endOwnedSession()
             updateWindowDisplays()
         }
+        wmController?.layoutRefreshController.collectUnusedWorkspacesIfIdle()
     }
 
     func handleManagedWindowRemoved(_ entry: WindowState) {

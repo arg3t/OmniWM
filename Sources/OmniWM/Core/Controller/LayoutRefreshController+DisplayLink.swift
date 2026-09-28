@@ -52,12 +52,16 @@ extension LayoutRefreshController {
     }
 
     private func handleScreenParametersChanged() {
+        workspaceSwipe.cancel(reason: "display-change")
         detectRefreshRates()
         controller?.syncMonitorsToNiriEngine()
         controller?.surfaceReconciler.noteWorldChanged()
     }
 
     func cleanupForMonitorDisconnect(displayId: CGDirectDisplayID, migrateAnimations: Bool) {
+        if workspaceSwipe.flight?.preparation.monitor.displayId == displayId {
+            workspaceSwipe.cancel(reason: "display-disconnected")
+        }
         if let workspaceId = niriHandler.scrollAnimationByDisplay[displayId] {
             niriHandler.terminateViewportGesture(
                 for: workspaceId,
@@ -321,6 +325,7 @@ extension LayoutRefreshController {
         reason: DisplayLinkStopReason = .idle
     ) {
         if niriHandler.scrollAnimationByDisplay[displayId] == nil,
+           !workspaceSwipe.hasDisplayWork(displayId),
            dwindleHandler.dwindleAnimationByDisplay[displayId] == nil,
            layoutState.closingAnimationsByDisplay[displayId].map({ $0.isEmpty }) ?? true
         {
@@ -351,7 +356,8 @@ extension LayoutRefreshController {
     }
 
     private func hasDisplayLinkWork(for displayId: CGDirectDisplayID) -> Bool {
-        niriHandler.scrollAnimationByDisplay[displayId] != nil
+        workspaceSwipe.hasDisplayWork(displayId)
+            || niriHandler.scrollAnimationByDisplay[displayId] != nil
             || dwindleHandler.dwindleAnimationByDisplay[displayId] != nil
             || !(layoutState.closingAnimationsByDisplay[displayId]?.isEmpty ?? true)
     }
@@ -384,6 +390,7 @@ extension LayoutRefreshController {
         var closingEndTime: CFTimeInterval = 0
 
         SkyLight.shared.withTransactionScope {
+            workspaceSwipe.tick(displayId: displayId, timestamp: displayLink.targetTimestamp)
             niriHandler.tickScrollAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)
             scrollEndTime = traceActive ? CACurrentMediaTime() : 0
             dwindleHandler.tickDwindleAnimation(targetTime: displayLink.targetTimestamp, displayId: displayId)

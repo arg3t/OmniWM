@@ -26,6 +26,7 @@ final class HiddenBarController {
     private var activationGeneration = 0
     private var activeActivation: ActiveActivation?
     private var temporarilyRevealed: Set<String> = []
+    private var didSetup = false
     let performance = HiddenBarPerformanceCapture()
 
     init(settings: SettingsStore) {
@@ -66,12 +67,13 @@ final class HiddenBarController {
     }
 
     func detectMenuBarApps() async -> [DetectedMenuBarApp] {
+        guard settings.hiddenBar.enabled, didSetup, itemService.isRunning else { return [] }
         let snapshot = HiddenBarRunningAppsSnapshot.current()
         let apps = await itemService.scan(
             candidates: snapshot.candidates,
             ownBundleID: Bundle.main.bundleIdentifier
         )
-        guard !Task.isCancelled else { return [] }
+        guard !Task.isCancelled, settings.hiddenBar.enabled, itemService.isRunning else { return [] }
         hider.learn(apps)
         return apps
     }
@@ -81,15 +83,12 @@ final class HiddenBarController {
     }
 
     func setup() {
-        observation.start()
-        itemService.start()
-        observation.install()
+        guard !didSetup else { return }
+        didSetup = true
         applySettings()
     }
 
     func applySettings() {
-        hider.refreshAvailability()
-        capture.cancel()
         let normalizedBundleIDs = HiddenBarSettingsPolicy.normalizedBundleIDs(
             settings.hiddenBar.hiddenBundleIDs,
             additionalProtectedBundleIDs: [Bundle.main.bundleIdentifier ?? "com.barut.OmniWM"]
@@ -97,6 +96,19 @@ final class HiddenBarController {
         if settings.hiddenBar.hiddenBundleIDs != normalizedBundleIDs {
             settings.hiddenBar.hiddenBundleIDs = normalizedBundleIDs
         }
+        guard settings.hiddenBar.enabled else {
+            deactivate()
+            return
+        }
+        guard didSetup else { return }
+
+        if !itemService.isRunning {
+            itemService.start()
+        }
+        observation.start()
+        observation.install()
+        hider.refreshAvailability()
+        capture.cancel()
         let configured = Set(normalizedBundleIDs)
         temporarilyRevealed.formIntersection(configured)
 
@@ -154,15 +166,27 @@ final class HiddenBarController {
     }
 
     func cleanup() {
+        didSetup = false
+        deactivate()
+    }
+
+    private func deactivate() {
         observation.invalidate()
         capture.cancel()
         forwarder.cancel()
         clearTemporaryReveals()
-        panel.dismiss()
+        panel.teardown()
         statusItems.dismiss()
         observation.removeObservers()
         hider.drop()
-        itemService.stop()
+        if itemService.isRunning {
+            itemService.stop()
+        }
+        iconCache.prune(keeping: [])
+    }
+
+    var isItemServiceRunningForTests: Bool {
+        itemService.isRunning
     }
 
     var isConcealing: Bool {

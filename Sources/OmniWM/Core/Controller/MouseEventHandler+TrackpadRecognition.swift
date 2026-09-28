@@ -12,6 +12,14 @@ extension MouseEventHandler {
         var cumulativeY: CGFloat
         var rawDeltaX: CGFloat
         var rawDeltaY: CGFloat
+        var previousTimestamp: TimeInterval
+
+        func traceRecognition(_ mode: TrackpadGestureMode, timestamp: TimeInterval) {
+            TrackpadScrollTrace.record(.recognition(
+                mode: mode, x: Double(cumulativeX), y: Double(cumulativeY),
+                dx: Double(rawDeltaX), dy: Double(rawDeltaY), interval: timestamp - previousTimestamp
+            ))
+        }
     }
 
     func handleGestureEvent(_ snapshot: GestureEventSnapshot) {
@@ -83,6 +91,9 @@ extension MouseEventHandler {
                 return
             }
             MouseTrace.record("gesture: \(requiredFingers) -> \(activeTouchCount) fingers, ending")
+            TrackpadScrollTrace.record(.termination(
+                reason: "finger-count", required: requiredFingers, fingers: activeTouchCount, held: held
+            ))
             if activeTouchCount < requiredFingers {
                 finalizeCommittedGestureAfterTouchRelease(timestamp: snapshot.timestamp)
                 return
@@ -108,6 +119,11 @@ extension MouseEventHandler {
             return
         }
         let wasOverviewCandidate = state.lockedGestureContext?.overviewAction != nil
+        if state.gesturePhase == .armed {
+            TrackpadScrollTrace.record(.termination(
+                reason: "uncommitted-finger-count", required: requiredFingers, fingers: activeTouchCount, held: 0
+            ))
+        }
         abortActiveGestureIfNeeded()
         if wasOverviewCandidate {
             state.suppressGestureStartUntilAllTouchesLift = true
@@ -117,7 +133,7 @@ extension MouseEventHandler {
     private func gestureFramePreconditionsSatisfied(at location: CGPoint) -> Bool {
         guard let controller else { return false }
         guard controller.isEnabled,
-              controller.settings.gestures.trackpadGesturesEnabled
+              controller.settings.effectiveTrackpadGesturesEnabled
         else {
             abortActiveGestureIfNeeded()
             return false
@@ -175,9 +191,19 @@ extension MouseEventHandler {
         state.gestureStartY = average.y
         state.gestureLastAverageX = average.x
         state.gestureLastAverageY = average.y
+        state.gestureLastTimestamp = timestamp
         state.gesturePhase = .armed
         if context.overviewAction == .resume {
             _ = controller?.windowActionHandler.beginOverviewGesture()
+        }
+        if let axis = context.workspaceAxis,
+           controller?.layoutRefreshController.workspaceSwipe.prepare(
+               monitorId: context.monitorId, timestamp: timestamp
+           ) == true
+        {
+            state.gesturePhase = .committed
+            state.activeGestureMode = .workspaceSwitch(axis: axis)
+            state.workspaceSwipeFired = true
         }
     }
 
@@ -252,7 +278,8 @@ extension MouseEventHandler {
             cumulativeX: (average.x - state.gestureStartX) * GestureEventSnapshot.normalizedPositionToGestureUnits,
             cumulativeY: (average.y - state.gestureStartY) * GestureEventSnapshot.normalizedPositionToGestureUnits,
             rawDeltaX: (average.x - state.gestureLastAverageX) * GestureEventSnapshot.normalizedPositionToGestureUnits,
-            rawDeltaY: (average.y - state.gestureLastAverageY) * GestureEventSnapshot.normalizedPositionToGestureUnits
+            rawDeltaY: (average.y - state.gestureLastAverageY) * GestureEventSnapshot.normalizedPositionToGestureUnits,
+            previousTimestamp: state.gestureLastTimestamp
         )
 
         if let axis = lockedContext.workspaceAxis,
@@ -271,13 +298,16 @@ extension MouseEventHandler {
             guard distanceSquared >= thresholdSquared else {
                 state.gestureLastAverageX = average.x
                 state.gestureLastAverageY = average.y
+                state.gestureLastTimestamp = timestamp
                 return
             }
-            guard commitGestureMode(metrics: metrics, lockedContext: lockedContext) else { return }
+            guard commitGestureMode(metrics: metrics, lockedContext: lockedContext, timestamp: timestamp)
+            else { return }
         }
 
         state.gestureLastAverageX = average.x
         state.gestureLastAverageY = average.y
+        state.gestureLastTimestamp = timestamp
         dispatchCommittedGestureFrame(
             metrics: metrics,
             lockedContext: lockedContext,

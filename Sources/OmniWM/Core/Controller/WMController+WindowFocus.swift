@@ -53,7 +53,7 @@ extension WMController {
         }
         guard !workspaceManager.isAppHidden(pid: pid) else { return false }
         if let entry = workspaceManager.entry(forWindowId: windowId),
-           workspaceManager.isAppHidden(pid: entry.pid)
+           workspaceManager.isWindowSuppressedByMacOS(entry.token)
         {
             return false
         }
@@ -91,7 +91,7 @@ extension WMController {
 
     func performWindowOrdering(windowId: Int) {
         if let entry = workspaceManager.entry(forWindowId: windowId),
-           workspaceManager.isAppHidden(pid: entry.pid)
+           workspaceManager.isWindowSuppressedByMacOS(entry.token)
         {
             return
         }

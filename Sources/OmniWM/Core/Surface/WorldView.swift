@@ -161,7 +161,7 @@ struct WorldView {
     private func isPlaceholderDescriptorVisible(entry: WindowState) -> Bool {
         let workspaceManager = controller.workspaceManager
         guard isWorkspaceVisible(entry.workspaceId),
-              !workspaceManager.isAppHidden(pid: entry.pid),
+              !workspaceManager.isWindowSuppressedByMacOS(entry.token),
               !workspaceManager.isHiddenInCorner(entry.token)
         else { return false }
         guard spaceTopology.isPopulated,

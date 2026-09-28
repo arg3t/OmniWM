@@ -5,6 +5,27 @@ import Foundation
 
 @MainActor
 struct TraceCaptureResources {
+    static let defaultRecorders: [any RuntimeTraceRecording] = [
+        AppVisibilityTrace.shared,
+        NativeFullscreenPlaceholderTrace.shared,
+        NativeFullscreenPlaceholderTrace.motion,
+        WindowAdmissionTrace.shared,
+        AnimationTickTrace.shared,
+        EventIntakeTrace.shared,
+        MainThreadAXSpanTrace.shared,
+        RawAXNotificationTrace.shared,
+        FrameApplyTrace.shared,
+        NiriLayoutTrace.shared,
+        ParkVisibilityAudit.shared,
+        ScrollTickTrace.shared,
+        AXWriteLatencyTrace.shared,
+        OverviewFrameTrace.shared,
+        BorderOpMetricsRecorder.shared,
+        MouseTrace.shared,
+        TrackpadScrollTrace.shared,
+        InputTrace.shared
+    ]
+
     let recorders: [any RuntimeTraceRecording]
     private let diagnosticsEventRecorder: DiagnosticsEventRecorder
     let writer: TraceCaptureFileWriter

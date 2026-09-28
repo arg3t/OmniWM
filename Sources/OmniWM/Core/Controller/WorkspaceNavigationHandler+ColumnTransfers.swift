@@ -50,7 +50,7 @@ extension WorkspaceNavigationHandler {
     ) -> StructuralMutationOutcome {
         guard let controller,
               let engine = controller.niriEngine,
-              !controller.workspaceManager.isAppHidden(handle.id),
+              !controller.workspaceManager.isWindowSuppressedByMacOS(handle.id),
               let sourceWorkspaceId = controller.workspaceManager.workspace(for: handle.id),
               sourceWorkspaceId != targetWorkspaceId,
               controller.workspaceManager.activeLayoutKind(for: sourceWorkspaceId) == .niri,

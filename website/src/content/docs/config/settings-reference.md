@@ -36,7 +36,7 @@ An absent version identifies a legacy version 0 file, while OmniWM v0.6.4 emitte
 
 ## general
 
-Global switches: hotkeys, Hyper key, default layout, sleep, updates, IPC, animations.
+Global switches: hotkeys, Hyper key, default layout, sleep, updates, IPC, animations, interface language.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -48,6 +48,7 @@ Global switches: hotkeys, Hyper key, default layout, sleep, updates, IPC, animat
 | `updateChecksEnabled` | boolean | `true` | Automatic update checks. |
 | `ipcEnabled` | boolean | `false` | Enables the IPC server used by `omniwmctl`. |
 | `animationsEnabled` | boolean | `true` | Animates window layout changes and other OmniWM-authored motion. macOS Reduce Motion turns them off regardless of this key. |
+| `language` | string | unset | Interface language as a packaged localization code, such as `"ja"` or `"sr-Latn"`. Leave it unset to follow macOS. Takes effect the next time OmniWM starts. |
 
 ## focus
 
@@ -205,8 +206,11 @@ Border and gradient colors resolve per macOS appearance: dark values apply when 
 
 Zoom and colors for the Overview.
 
+**Unreleased:** `enabled` is available when building from `main`.
+
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
+| `enabled` *(optional)* | boolean | `true` | Enables Overview. When off, its shortcuts, mouse button, trackpad gesture, and direct commands cannot open it; saved input assignments remain available when re-enabled. |
 | `zoom` | float | `1.0` | Overview zoom factor. |
 | `backdrop` | color table | `0.05, 0.05, 0.08, 1.0` | Backdrop behind the zoomed-out workspaces. |
 | `windowBorders.normal` | color table | `0.3, 0.3, 0.35, 0.5` | Border for windows at rest. |
@@ -217,9 +221,12 @@ Zoom and colors for the Overview.
 
 The per-monitor workspace bar. Per-monitor exceptions live in [`monitorBarOverrides`](#per-monitor-overrides).
 
+**Unreleased:** `hoverPreviewsEnabled` and global-off precedence are available when building from `main`.
+
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `enabled` | boolean | `true` | Shows the workspace bar. |
+| `enabled` | boolean | `true` | Shows the workspace bar. When off, all monitors' bars are off, including monitors with `enabled = true` overrides; those preferences return when the global bar is re-enabled. |
+| `hoverPreviewsEnabled` *(optional)* | boolean | `true` | Shows window thumbnail previews when hovering over bar icons. Turning it off releases the preview capture and cache while leaving the bar active. |
 | `showLabels` | boolean | `true` | Shows workspace names next to their numbers. |
 | `showFloatingWindows` | boolean | `false` | Includes floating windows' icons in workspace pills. |
 | `windowLevel` | string | `"popup"` | Bar window level: `normal`, `floating`, `status`, `popup`, `screensaver`. |
@@ -313,9 +320,10 @@ Clipboard history limits. History content itself is stored in the state director
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `historyEnabled` | boolean | `false` | Enables clipboard history capture. |
-| `maxItems` | integer | `200` | Maximum number of history entries. |
+| `maxItems` | integer | `200` | Maximum number of unpinned history entries. |
 | `maxItemBytes` | integer | `8388608` | Maximum size of a single entry (8 MiB). |
-| `maxTotalBytes` | integer | `67108864` | Maximum total history size (64 MiB). |
+| `maxTotalBytes` | integer | `67108864` | Maximum total history size, including pins (64 MiB). |
+| `ignoredTypes` | string array | `[]` | Exact pasteboard type identifiers that exclude a copy from history. |
 
 ## quakeTerminal
 
@@ -446,6 +454,8 @@ minWidth = 574.0
 ## Per-monitor overrides
 
 Five arrays hold per-monitor exceptions to the global tables. Every entry requires `monitorName`. Use the display’s `monitorDisplayUUID`; for a display without a UUID, supply both `monitorDisplayId` and `monitorName`. A name alone does not match a display. All entries except orientation also carry an `id` UUID identifying the override row, not the display. Override keys are all optional — an omitted key falls back to the corresponding global setting. All five arrays default to empty. Custom routing grids live separately in [`routing.arrangements`](#routing).
+
+When `workspaceBar.enabled = false`, no monitor can show its bar. Saved `monitorBarOverrides.enabled` values take effect again when the global bar is enabled. **Unreleased:** This precedence applies when building from `main`.
 
 | Array | Overridable keys |
 | --- | --- |

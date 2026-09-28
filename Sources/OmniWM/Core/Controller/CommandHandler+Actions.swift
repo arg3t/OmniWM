@@ -184,7 +184,7 @@ extension CommandHandler {
     }
 
     func perform(_ action: DwindleAction, controller: WMController) -> ExternalCommandResult {
-        switch action {
+        let changed = switch action {
         case .moveToRoot:
             controller.dwindleLayoutHandler.moveToRootInDwindle()
         case .toggleSplit:
@@ -200,7 +200,7 @@ extension CommandHandler {
         case .preselectClear:
             controller.dwindleLayoutHandler.clearPreselectInDwindle()
         }
-        return .executed
+        return changed ? .executed : .noChange
     }
 
     func perform(_ action: ScratchpadAction, controller: WMController) -> ExternalCommandResult {
@@ -221,8 +221,10 @@ extension CommandHandler {
         case .hiddenBar:
             controller.toggleHiddenBarPanel()
         case .quakeTerminal:
+            guard controller.settings.quakeTerminal.enabled else { return .ignoredDisabled }
             controller.toggleQuakeTerminal()
         case .overview:
+            guard controller.settings.overview.enabled else { return .ignoredDisabled }
             controller.toggleOverview()
         case .systemStats:
             controller.toggleSystemStats()

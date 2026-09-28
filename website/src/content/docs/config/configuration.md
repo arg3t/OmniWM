@@ -64,7 +64,7 @@ The full schema is documented key by key in the [Settings Reference](/config/set
 
 | Table / array | Covers |
 | --- | --- |
-| [`[general]`](/config/settings-reference/#general) | Hotkeys master switch, Hyper key, default layout, updates, IPC, animations |
+| [`[general]`](/config/settings-reference/#general) | Hotkeys master switch, Hyper key, default layout, updates, IPC, animations, language |
 | [`[focus]`](/config/settings-reference/#focus) | Focus-follows-mouse and monitor-edge focus behavior |
 | [`[mouseWarp]`](/config/settings-reference/#mousewarp) | Cursor warping between monitors |
 | [`[routing]`](/config/settings-reference/#routing) | macOS vs. custom routing and saved arrangements per connected display set |

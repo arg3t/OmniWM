@@ -936,6 +936,7 @@ final class DiagnosticsTraceRecorderTests: XCTestCase {
         XCTAssertTrue(body.contains("== Overview Frame Timing =="))
         XCTAssertTrue(body.contains("== Border Op Metrics =="))
         XCTAssertTrue(body.contains("== Mouse Trace =="))
+        XCTAssertTrue(body.contains("== Trackpad Scroll Trace =="))
         try? FileManager.default.removeItem(at: artifact.url)
 
         AppVisibilityTrace.record(

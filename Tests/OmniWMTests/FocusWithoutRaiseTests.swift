@@ -369,6 +369,7 @@ final class FocusWithoutRaiseTests: XCTestCase {
         let cases: [(ManagedFocusOrigin, Bool)] = [
             (.focusFollowsMouse, true),
             (.pointerHover, false),
+            (.pointerSelection, false),
             (.keyboardOrProgrammatic, false)
         ]
 
@@ -1194,6 +1195,34 @@ final class FocusWithoutRaiseTests: XCTestCase {
             fixture.recorder.operations,
             [.deactivate(source), .activateSameApp(source)]
         )
+        XCTAssertNil(fixture.controller.intentLedger.activeManagedRequest)
+        XCTAssertNil(fixture.controller.workspaceManager.pendingFocusedToken)
+    }
+
+    func testScreenshotSelectionCancelsPendingSameAppMouseFocusHandoff() throws {
+        let fixture = try makeFixture()
+        let source = addWindow(
+            pid: 820_015,
+            windowId: 820_137,
+            to: fixture.workspaceId,
+            controller: fixture.controller
+        )
+        let target = addWindow(
+            pid: source.pid,
+            windowId: 820_138,
+            to: fixture.workspaceId,
+            controller: fixture.controller
+        )
+        setFocused(source, in: fixture.workspaceId, controller: fixture.controller)
+        fixture.recorder.operations.removeAll()
+        fixture.controller.focusWindow(target, origin: .focusFollowsMouse)
+        let requestId = try XCTUnwrap(fixture.controller.intentLedger.activeManagedRequest?.requestId)
+        XCTAssertEqual(fixture.recorder.operations, [.deactivate(source)])
+        fixture.controller.focusPolicyEngine.screenshotSelectionActiveProvider = { true }
+
+        fixture.controller.axEventHandler.handleIntentExpired(requestId)
+
+        XCTAssertFalse(fixture.recorder.operations.contains(.activateSameApp(target)))
         XCTAssertNil(fixture.controller.intentLedger.activeManagedRequest)
         XCTAssertNil(fixture.controller.workspaceManager.pendingFocusedToken)
     }

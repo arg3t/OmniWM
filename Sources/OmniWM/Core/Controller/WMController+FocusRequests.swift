@@ -82,7 +82,7 @@ extension WMController {
         if hasStartedServices {
             guard !isFrontmostAppLockScreen() else { return nil }
         }
-        if isManagedWindowSuppressedByMacOSHide(token) {
+        if isManagedWindowSuppressedByMacOS(token) {
             return nil
         }
         if isManagedWindowSuspendedForNativeFullscreen(token) {

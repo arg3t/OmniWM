@@ -74,6 +74,18 @@ final class MultitouchDeviceRegistration {
         return senderId
     }
 
+    func recordTraceSnapshot(generation: UInt) {
+        guard TrackpadScrollTrace.shared.isActive else { return }
+        for (slot, registration) in registrations.enumerated() {
+            TrackpadScrollTrace.record(.source(
+                generation: generation,
+                slot: slot,
+                registryId: registration.device.registryId,
+                senderId: registration.device.senderId
+            ))
+        }
+    }
+
     func allRunning() -> Bool {
         guard let operations else { return false }
         let result = registrations.allSatisfy { operations.isRunning($0.device.ref) }

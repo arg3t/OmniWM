@@ -1595,6 +1595,87 @@ final class OverviewBehaviorTests: XCTestCase {
         }
     }
 
+    func testOpeningGestureTailCannotMoveOverviewBeforeFreshScroll() throws {
+        let recorder = TrackpadScrollTrace.shared
+        recorder.beginCapture()
+        defer {
+            recorder.endCapture()
+            recorder.releaseStorage()
+        }
+        let fixture = try makeRuntimeOverviewFixture(windowCount: 1)
+        let manager = fixture.controller.workspaceManager
+        let monitorId = try XCTUnwrap(manager.monitors.first?.id)
+        let empty = try XCTUnwrap(manager.workspaceId(for: "2", createIfMissing: true))
+        manager.assignWorkspaceToMonitor(empty, monitorId: monitorId)
+        let harness = InteractiveOverviewHarness(fixture: fixture)
+        let overview = harness.overview
+        defer { overview.completeCloseTransition(targetWindow: nil) }
+
+        XCTAssertTrue(overview.beginInteractiveTransition())
+        overview.updateInteractiveTransition(cumulativeUnits: 20, timestamp: 100)
+        overview.updateInteractiveTransition(cumulativeUnits: 170, timestamp: 100.1)
+        harness.clock.time = 100.1
+        overview.endInteractiveTransition(timestamp: 100.1)
+        guard case .opening = overview.state else { return XCTFail("Expected release animation") }
+        XCTAssertFalse(overview.isInteractiveTransitionActive)
+
+        let view = try XCTUnwrap(overview.windowSession.primaryOverviewWindow()?.contentView?.subviews
+            .compactMap { $0 as? OverviewView }.first)
+        let offset = view.layout.scrollOffset
+        let selected = overview.selectedWindowHandle
+        let active = manager.activeWorkspace(on: monitorId)?.id
+        var event = OverviewScrollInput.Event(
+            deltaX: 15, deltaY: -60, modifiers: [], isPrecise: true, location: .zero, phase: .began
+        )
+        for phase: NSEvent.Phase in [.began, .ended] {
+            event.phase = phase
+            overview.input.handleScroll(event, on: monitorId)
+            XCTAssertEqual(view.layout.scrollOffset, offset)
+            XCTAssertEqual(overview.selectedWindowHandle, selected)
+            XCTAssertEqual(manager.activeWorkspace(on: monitorId)?.id, active)
+        }
+        try harness.completeLastTransition()
+        event.phase = []
+        for phase: NSEvent.Phase in [.began, .changed, .ended] {
+            event.momentumPhase = phase
+            overview.input.handleScroll(event, on: monitorId)
+            XCTAssertEqual(view.layout.scrollOffset, offset)
+        }
+        event.momentumPhase = []
+        event.phase = .began
+        overview.input.handleScroll(event, on: monitorId)
+        XCTAssertNotEqual(view.layout.scrollOffset, offset)
+        XCTAssertEqual(overview.selectedWindowHandle, selected)
+        XCTAssertEqual(manager.activeWorkspace(on: monitorId)?.id, active)
+        let trace = recorder.dump()
+        XCTAssertTrue(trace.contains("overview-scroll phase=1 momentum=0 precise=true state=opening suppressed=true"))
+        XCTAssertTrue(trace.contains("overview-scroll phase=1 momentum=0 precise=true state=open suppressed=false"))
+    }
+
+    func testKeyboardOverviewOpeningAndReopeningAllowPreciseScrolling() throws {
+        let harness = try InteractiveOverviewHarness(fixture: makeRuntimeOverviewFixture(windowCount: 1))
+        let overview = harness.overview
+        let manager = harness.fixture.controller.workspaceManager
+        let monitorId = try XCTUnwrap(manager.monitors.first?.id)
+        let empty = try XCTUnwrap(manager.workspaceId(for: "2", createIfMissing: true))
+        manager.assignWorkspaceToMonitor(empty, monitorId: monitorId)
+        defer { overview.completeCloseTransition(targetWindow: nil) }
+        let event = OverviewScrollInput.Event(
+            deltaX: 0, deltaY: -60, modifiers: [], isPrecise: true, location: .zero, phase: .changed
+        )
+        for _ in 0 ..< 2 {
+            overview.toggle()
+            guard case .opening = overview.state else { return XCTFail("Expected keyboard opening") }
+            let view = try XCTUnwrap(overview.windowSession.primaryOverviewWindow()?.contentView?.subviews
+                .compactMap { $0 as? OverviewView }.first)
+            let offset = view.layout.scrollOffset
+            overview.input.handleScroll(event, on: monitorId)
+            XCTAssertNotEqual(view.layout.scrollOffset, offset)
+            overview.input.beginGestureScrollSuppression()
+            overview.completeCloseTransition(targetWindow: nil)
+        }
+    }
+
     func testInteractiveOpenTracksFingerAndCommitsWithVelocity() throws {
         let harness = try InteractiveOverviewHarness(fixture: makeRuntimeOverviewFixture(windowCount: 1))
         let overview = harness.overview

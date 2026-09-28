@@ -267,7 +267,7 @@ extension WMController {
         if enabled {
             serviceLifecycleManager.start()
         } else {
-            serviceLifecycleManager.stop()
+            serviceLifecycleManager.stopRestoringWindows()
         }
         reconcileEnabledAndHotkeysState()
     }
@@ -293,6 +293,7 @@ extension WMController {
 
     func reconcileEnabledAndHotkeysState() {
         isEnabled = desiredEnabled && accessibilityPermissionGranted
+            && !serviceLifecycleManager.isStoppingForUser && !serviceLifecycleManager.quitRequested
 
         let shouldEnableHotkeys = desiredHotkeysEnabled
             && isEnabled
@@ -312,6 +313,9 @@ extension WMController {
             enabled: settings.borders.enabled,
             width: CGFloat(settings.borders.width)
         )
+        if !current.enabled {
+            surfaceReconciler.cleanupBorder()
+        }
         let previous = appliedBorderLayoutConfig
         appliedBorderLayoutConfig = current
         let clearanceChanged = workspaceManager.monitors.contains { monitor in
@@ -409,10 +413,6 @@ extension WMController {
         systemHyperTriggerFailure = hotkeys.systemHyperTriggerFailure
     }
 
-    var workspaceBarRefreshIsEnabled: Bool {
-        settings.workspaceBar.enabled || settings.workspaceBar.monitorOverrides.contains(where: { $0.enabled == true })
-    }
-
     var statusBarRefreshIsEnabled: Bool {
         statusBarController != nil && settings.statusBar.showWorkspaceName
     }
@@ -442,6 +442,7 @@ extension WMController {
         domains: InvalidationDomain,
         surfaceScope: SessionSurfaceInvalidationScope
     ) {
+        layoutRefreshController.workspaceSwipe.handleInvalidation(workspaceId: workspaceId, domains: domains)
         switch surfaceScope {
         case .full:
             surfaceReconciler.noteWorldChanged()
@@ -471,7 +472,8 @@ extension WMController {
             maxItems: settings.clipboard.maxItems,
             maxItemBytes: settings.clipboard.maxItemBytes,
             maxTotalBytes: settings.clipboard.maxTotalBytes,
-            storageDirectory: clipboardHistoryDirectory
+            storageDirectory: clipboardHistoryDirectory,
+            ignoredTypes: settings.clipboard.ignoredTypes
         )
     }
 

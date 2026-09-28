@@ -41,18 +41,22 @@ final class CommandHandler {
             return .ignoredOverview
         }
 
-        let layoutType = currentLayoutType()
-
-        switch (command.layoutCompatibility, layoutType) {
-        case (.niri, .dwindle),
-             (.dwindle, .niri),
-             (.dwindle, .defaultLayout):
+        guard Self.isLayoutCompatible(command.layoutCompatibility, with: currentLayoutType()) else {
             return .ignoredLayoutMismatch
-        default:
-            break
         }
 
         return performAllowedCommand(command, controller: controller)
+    }
+
+    static func isLayoutCompatible(_ compatibility: LayoutCompatibility, with layoutType: LayoutType) -> Bool {
+        switch (compatibility, layoutType) {
+        case (.niri, .dwindle),
+             (.dwindle, .niri),
+             (.dwindle, .defaultLayout):
+            false
+        default:
+            true
+        }
     }
 
     private func performAllowedCommand(_ command: HotkeyCommand, controller: WMController) -> ExternalCommandResult {
@@ -230,7 +234,7 @@ final class CommandHandler {
 
         if let token = controller.workspaceManager.selectedManagedToken,
            let entry = controller.workspaceManager.entry(for: token),
-           !controller.workspaceManager.isAppHidden(pid: entry.pid)
+           !controller.workspaceManager.isWindowSuppressedByMacOS(entry.token)
         {
             let currentState = isFullscreen(entry.axRef)
             if currentState {
@@ -264,7 +268,7 @@ final class CommandHandler {
             ?? frontmostPid.flatMap { controller.axEventHandler.focusedWindowToken(for: $0) }
         guard let token = controller.workspaceManager.nativeFullscreenCommandTarget(frontmostToken: frontmostToken),
               let entry = controller.workspaceManager.entry(for: token),
-              !controller.workspaceManager.isAppHidden(pid: entry.pid)
+              !controller.workspaceManager.isWindowSuppressedByMacOS(entry.token)
         else {
             return
         }

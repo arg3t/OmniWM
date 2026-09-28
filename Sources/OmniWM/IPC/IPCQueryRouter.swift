@@ -142,7 +142,8 @@ final class IPCQueryRouter {
             display: monitor.map(IPCDisplayRef.init(monitor:)),
             app: IPCAppRef(appInfo: appInfo),
             title: AXWindowService.titlePreferFast(windowId: UInt32(entry.windowId)),
-            frame: frame.map(IPCRect.init)
+            frame: frame.map(IPCRect.init),
+            isFullscreen: controller.workspaceManager.layoutTopology(for: entry.workspaceId).isFullscreen(focusedToken)
         )
 
         return IPCFocusedWindowQueryResult(window: snapshot)

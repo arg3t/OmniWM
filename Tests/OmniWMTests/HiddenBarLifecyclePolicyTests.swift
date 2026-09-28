@@ -40,6 +40,37 @@ final class HiddenBarLifecyclePolicyTests: XCTestCase {
     }
 
     @MainActor
+    func testDisabledSetupLeavesObserversAndItemServiceStopped() {
+        let controller = WindowAdmissionTestSupport.controller(prefix: "HiddenBarDisabledSetup")
+        controller.settings.hiddenBar.enabled = false
+        let hiddenBar = controller.hiddenBarController
+
+        hiddenBar.setup()
+
+        XCTAssertFalse(hiddenBar.observation.hasScreenParametersObserverForTests)
+        XCTAssertFalse(hiddenBar.isItemServiceRunningForTests)
+        hiddenBar.cleanup()
+    }
+
+    @MainActor
+    func testDisableReleasesServicesAndReenableRestartsThem() {
+        let controller = WindowAdmissionTestSupport.controller(prefix: "HiddenBarToggleServices")
+        let hiddenBar = controller.hiddenBarController
+        hiddenBar.setup()
+        XCTAssertTrue(hiddenBar.observation.hasScreenParametersObserverForTests)
+        XCTAssertTrue(hiddenBar.isItemServiceRunningForTests)
+
+        hiddenBar.setEnabled(false)
+        XCTAssertFalse(hiddenBar.observation.hasScreenParametersObserverForTests)
+        XCTAssertFalse(hiddenBar.isItemServiceRunningForTests)
+
+        hiddenBar.setEnabled(true)
+        XCTAssertTrue(hiddenBar.observation.hasScreenParametersObserverForTests)
+        XCTAssertTrue(hiddenBar.isItemServiceRunningForTests)
+        hiddenBar.cleanup()
+    }
+
+    @MainActor
     func testTopologyRefreshDebouncesScreenChanges() async {
         let controller = WindowAdmissionTestSupport.controller(prefix: "HiddenBarTopologyDebounce")
         let hiddenBar = controller.hiddenBarController

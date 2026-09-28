@@ -35,6 +35,7 @@ extension LayoutRefreshController {
         confirmedFrame: CGRect?,
         transactionId: UInt64? = nil
     ) {
+        defer { workspaceSwipe.checkSettlement() }
         guard let controller,
               let pendingTransaction = takePendingRevealTransaction(for: windowId, matching: transactionId)
         else {
@@ -72,6 +73,7 @@ extension LayoutRefreshController {
         forWindowId windowId: Int,
         transactionId: UInt64? = nil
     ) {
+        defer { workspaceSwipe.checkSettlement() }
         guard let controller,
               let pendingTransaction = takePendingRevealTransaction(for: windowId, matching: transactionId)
         else {
@@ -190,7 +192,7 @@ extension LayoutRefreshController {
               let pendingTransaction = pendingRevealTransaction(for: windowId),
               pendingTransaction.id == transactionId,
               let entry = controller.workspaceManager.entry(for: pendingTransaction.token),
-              !controller.workspaceManager.isAppHidden(pid: entry.pid),
+              !controller.workspaceManager.isWindowSuppressedByMacOS(entry.token),
               let observedFrame = observedWindowFrame(entry)
         else {
             return nil

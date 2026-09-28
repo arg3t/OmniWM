@@ -150,7 +150,7 @@ enum StructuralMutationOutcome: Equatable {
                in: workspaceId
            ) as? NiriWindow,
            controller.workspaceManager.entry(for: selectedWindow.token)?.workspaceId == workspaceId,
-           !controller.isManagedWindowSuppressedByMacOSHide(selectedWindow.token)
+           !controller.isManagedWindowSuppressedByMacOS(selectedWindow.token)
         {
             controller.focusWindow(
                 selectedWindow.token,

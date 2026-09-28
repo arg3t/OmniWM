@@ -17,7 +17,7 @@ extension WorkspaceManager {
             if focusedWorkspaceId == id || visible.contains(id) {
                 continue
             }
-            if !windowQueries.windows(in: id).isEmpty {
+            if windowQueries.windowCount(in: id) != 0 {
                 continue
             }
             toRemove.append(id)
